@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Garimpeira PDV</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{--green:#52634b;--green2:#e9eee5;--ink:#263027;--muted:#748071;--line:#e4e8e1;--cream:#f7f7f2;--gold:#b39a65}
+*{box-sizing:border-box}body{margin:0;background:var(--cream);color:var(--ink);font:15px/1.45 Inter,system-ui,Arial}
+header{background:#fff;border-bottom:1px solid var(--line);padding:15px 22px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:2}
+.brand{font-weight:800;letter-spacing:.08em;color:var(--green)}.brand small{display:block;font-weight:500;letter-spacing:.02em;color:var(--muted);font-size:11px}
+main{max-width:1200px;margin:24px auto;padding:0 18px}.top{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+h1{font-size:25px;margin:0 0 4px}.sub{color:var(--muted);margin:0}
+.nav{display:flex;gap:7px;flex-wrap:wrap;margin:20px 0}
+button,.btn{border:0;border-radius:10px;padding:10px 14px;background:var(--green);color:white;font-weight:650;cursor:pointer}
+button.secondary{background:#fff;color:var(--green);border:1px solid var(--line)}button.danger{background:#a34e42}button:disabled{opacity:.55;cursor:not-allowed}
+.nav button{background:#fff;color:#586453;border:1px solid var(--line)}.nav button.active{background:var(--green);color:#fff}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:13px}.card{background:#fff;border:1px solid var(--line);border-radius:15px;padding:17px;box-shadow:0 3px 12px #27352208}
+.metric span{color:var(--muted);font-size:13px}.metric strong{display:block;font-size:27px;margin-top:6px;color:var(--green)}
+.panel{display:none}.panel.active{display:block}.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.between{justify-content:space-between}
+input,select,textarea{width:100%;padding:11px 12px;border:1px solid #dce2d8;border-radius:9px;background:white;color:var(--ink);font:inherit}
+label{display:block;font-size:12px;font-weight:700;color:#697464;margin:0 0 5px}.field{min-width:160px;flex:1}
+.formgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:14px 0}
+table{width:100%;border-collapse:collapse;margin-top:12px;background:white}th,td{text-align:left;padding:11px 9px;border-bottom:1px solid var(--line);font-size:13px}th{color:var(--muted);font-weight:700}
+.empty{text-align:center;padding:28px;color:var(--muted)}.pill{display:inline-block;padding:4px 8px;border-radius:20px;background:var(--green2);color:var(--green);font-size:11px;font-weight:700}
+.note{background:#f5f0e5;border:1px solid #e9dfc9;color:#67583b;border-radius:11px;padding:12px;font-size:13px;margin:14px 0}
+.statline{display:flex;justify-content:space-between;gap:12px;align-items:center;border-bottom:1px solid var(--line);padding:8px 0}.small-muted{font-size:12px;color:var(--muted)}
+#loginScreen{max-width:430px;margin:8vh auto;padding:0 18px}#loginScreen .card{padding:24px}#app{display:none}
+.status{font-size:12px;color:var(--muted)}.status.ok{color:#426b3d}.status.err{color:#a34e42}
+@media(max-width:760px){.grid{grid-template-columns:repeat(2,1fr)}.formgrid{grid-template-columns:1fr 1fr}header{padding:12px}.top h1{font-size:21px}}
+@media(max-width:450px){.formgrid{grid-template-columns:1fr}.grid{gap:8px}.card{padding:13px}}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">GARIMPEIRA DE CABIDE<small>PDV • conectado ao Supabase</small></div>
+  <div class="row"><span id="connectionStatus" class="status">Verificando conexão…</span><button id="logoutBtn" class="secondary" style="display:none" onclick="logout()">Sair</button></div>
+</header>
+
+<section id="loginScreen">
+  <div class="card">
+    <h1>Acesso administrativo</h1>
+    <p class="sub">Entre com o usuário administrador já cadastrado no Supabase.</p>
+    <form id="loginForm">
+      <div style="margin:16px 0"><label for="email">E-mail</label><input id="email" type="email" autocomplete="username" value="garimpeiradecabide@gmail.com" required></div>
+      <div style="margin:16px 0"><label for="password">Senha</label><input id="password" type="password" autocomplete="current-password" required></div>
+      <button type="submit" style="width:100%">Entrar no sistema</button>
+    </form>
+    <p id="loginMessage" class="small-muted"></p>
+    <div class="note">Se o acesso não funcionar, confira o e-mail e a senha usados na criação do usuário no Supabase. Não compartilhe sua senha.</div>
+  </div>
+</section>
+
+<div id="app">
+<main>
+  <div class="top">
+    <div><h1>Garimpeira PDV</h1><p class="sub">Gestão de vendas, sacolinhas e estoque</p></div>
+    <button onclick="show('live')">＋ Abrir venda ao vivo</button>
+  </div>
+  <div class="nav">
+    <button class="active" data-tab="home" onclick="show('home')">Painel</button>
+    <button data-tab="live" onclick="show('live')">Venda ao vivo</button>
+    <button data-tab="clients" onclick="show('clients')">Clientes</button>
+    <button data-tab="products" onclick="show('products')">Produtos</button>
+    <button data-tab="suppliers" onclick="show('suppliers')">Fornecedoras</button>
+    <button data-tab="stock" onclick="show('stock')">Estoque</button>
+    <button data-tab="bags" onclick="show('bags')">Sacolinhas</button>
+  </div>
+  <section id="home" class="panel active">
+    <div class="grid">
+      <div class="card metric"><span>Clientes cadastradas</span><strong id="mClients">0</strong></div>
+      <div class="card metric"><span>Produtos cadastrados</span><strong id="mProducts">0</strong></div>
+      <div class="card metric"><span>Peças disponíveis</span><strong id="mAvailable">0</strong></div>
+      <div class="card metric"><span>Sacolinhas abertas</span><strong id="mBags">0</strong></div>
+    </div>
+    <div class="note">Os dados desta tela são carregados do banco Supabase. Cadastros feitos aqui são enviados para a nuvem.</div>
+    <div class="card"><h3>Bem-vinda ao Garimpeira PDV</h3><p>Cadastre fornecedoras, clientes e produtos. Depois selecione uma cliente na venda ao vivo e leia o código de barras ou digite o código curto.</p></div>
+  </section>
+  <section id="clients" class="panel"><div class="card">
+    <h3>Cadastro de clientes</h3><div class="formgrid">
+      <div class="field"><label for="cName">Nome</label><input id="cName" placeholder="Nome da cliente"></div>
+      <div class="field"><label for="cPhone">Telefone / WhatsApp</label><input id="cPhone" placeholder="DDD + número"></div>
+      <div class="field"><label for="cObs">Observações</label><input id="cObs" placeholder="Opcional"></div>
+    </div><button onclick="addClient()">Salvar cliente</button><input style="margin-top:14px" id="clientSearch" placeholder="Buscar por nome ou telefone..." oninput="renderClients()"><div id="clientList"></div>
+  </div></section>
+  <section id="suppliers" class="panel"><div class="card">
+    <h3>Cadastro de fornecedoras</h3><div class="formgrid">
+      <div class="field"><label for="sName">Nome</label><input id="sName" placeholder="Nome da fornecedora"></div>
+      <div class="field"><label for="sPhone">Telefone / WhatsApp</label><input id="sPhone" placeholder="Contato"></div>
+      <div class="field"><label for="sRule">Regra de acerto da consignação</label><select id="sRule"><option>Por peça vendida</option><option>Semanal</option><option>Quinzenal</option><option>Mensal</option><option>Personalizado</option></select></div>
+    </div><button onclick="addSupplier()">Salvar fornecedora</button><div id="supplierList"></div>
+  </div></section>
+  <section id="products" class="panel"><div class="card">
+    <h3>Cadastro de produtos</h3><div class="formgrid">
+      <div class="field"><label for="pDesc">Descrição</label><input id="pDesc" placeholder="Ex.: Blusa canelada"></div>
+      <div class="field"><label for="pShort">Código curto da live</label><input id="pShort" placeholder="Ex.: 025"></div>
+      <div class="field"><label for="pSize">Tamanho</label><input id="pSize" placeholder="Ex.: M / 38"></div>
+      <div class="field"><label for="pCost">Valor de custo / repasse</label><input id="pCost" type="number" min="0" step=".01" placeholder="0,00"></div>
+      <div class="field"><label for="pPrice">Valor de venda</label><input id="pPrice" type="number" min="0" step=".01" placeholder="0,00"></div>
+      <div class="field"><label for="pSupplier">Fornecedora</label><select id="pSupplier"></select></div>
+      <div class="field"><label for="pType">Modalidade de entrada</label><select id="pType"><option value="purchase">Compra</option><option value="consignment">Consignação</option></select></div>
+      <div class="field"><label for="pBarcode">Código de barras (vazio = gerar)</label><input id="pBarcode" placeholder="Gerado automaticamente"></div>
+    </div><button onclick="addProduct()">Salvar produto e gerar etiqueta</button><div id="productList"></div>
+  </div></section>
+  <section id="stock" class="panel"><div class="card"><h3>Estoque e movimentações</h3><div id="stockList"></div></div></section>
+  <section id="live" class="panel"><div class="card">
+    <h3>Frente de caixa • venda ao vivo</h3><div class="formgrid">
+      <div class="field"><label for="liveClient">Cliente selecionada</label><select id="liveClient" onchange="renderCart()"></select></div>
+      <div class="field"><label for="scan">Leitor / código de barras</label><input id="scan" placeholder="Bipe o código e pressione Enter" onkeydown="if(event.key==='Enter'){event.preventDefault();scanProduct()}"></div>
+      <div class="field"><label for="shortScan">Ou código curto da live</label><input id="shortScan" placeholder="Ex.: 025" onkeydown="if(event.key==='Enter'){event.preventDefault();scanShort()}"></div>
+    </div><div class="row"><button onclick="scanProduct()">Adicionar código</button><button class="secondary" onclick="scanShort()">Adicionar código curto</button><button class="secondary" onclick="show('clients')">Cadastrar cliente</button></div>
+    <div id="cart"></div><div class="note">Cada peça reservada é registrada no banco e fica vinculada à sacolinha da cliente.</div>
+  </div></section>
+  <section id="bags" class="panel"><div class="card"><h3>Sacolinhas permanentes</h3><div id="bagList"></div></div></section>
+</main>
+</div>
+
+<script>
+'use strict';
+const SUPABASE_URL = 'https://gcyuvbakxswkjcyqscth.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_haoKT8vSzAEpxwfsapBM1A_4REUsg8T';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+let db = {clients:[], suppliers:[], products:[], bags:{}};
+let currentUser = null;
+const el = id => document.getElementById(id);
+const money = n => Number(n || 0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+const esc = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const ruleLabel = v => v || 'Por peça vendida';
+const typeLabel = v => v === 'consignment' ? 'Consignação' : 'Compra';
+
+function setStatus(msg, ok=false){el('connectionStatus').textContent=msg;el('connectionStatus').className='status '+(ok?'ok':'err');}
+function show(tab){
+  document.querySelectorAll('.panel').forEach(x=>x.classList.toggle('active',x.id===tab));
+  document.querySelectorAll('.nav button').forEach(x=>x.classList.toggle('active',x.dataset.tab===tab));
+  render();
+}
+async function login(email,password){
+  const {data,error}=await sb.auth.signInWithPassword({email,password});
+  if(error) throw error;
+  currentUser=data.user;
+  await loadCloud();
+  el('loginScreen').style.display='none';el('app').style.display='block';el('logoutBtn').style.display='inline-block';
+  setStatus('Conectado ao Supabase',true);
+}
+async function logout(){
+  await sb.auth.signOut();currentUser=null;db={clients:[],suppliers:[],products:[],bags:{}};
+  el('app').style.display='none';el('loginScreen').style.display='block';el('logoutBtn').style.display='none';
+  setStatus('Sessão encerrada');
+}
+el('loginForm').addEventListener('submit',async e=>{
+  e.preventDefault();el('loginMessage').textContent='Entrando…';
+  try{await login(el('email').value.trim(),el('password').value);el('password').value='';el('loginMessage').textContent='';}
+  catch(err){console.error(err);el('loginMessage').textContent='Não foi possível entrar: '+(err.message||'verifique e-mail e senha');}
+});
+async function loadCloud(){
+  const [c,s,p,b,bi]=await Promise.all([
+    sb.from('customers').select('*').order('created_at',{ascending:false}),
+    sb.from('suppliers').select('*').eq('active',true).order('name'),
+    sb.from('products').select('*').order('created_at',{ascending:false}),
+    sb.from('bags').select('*').eq('status','open').order('created_at',{ascending:false}),
+    sb.from('bag_items').select('*').eq('status','reserved').order('added_at',{ascending:true})
+  ]);
+  for(const r of [c,s,p,b,bi]) if(r.error) throw r.error;
+  db.clients=c.data.map(x=>({id:x.id,name:x.name,phone:x.phone||'',obs:x.notes||''}));
+  db.suppliers=s.data.map(x=>({id:x.id,name:x.name,phone:x.phone||'',rule:x.settlement_rule||'',notes:x.notes||''}));
+  db.products=p.data.map(x=>({id:x.id,desc:x.description,short:x.short_code||'',size:x.size||'',cost:Number(x.cost||0),price:Number(x.sale_price||0),supplierId:x.supplier_id, supplier:(s.data.find(y=>y.id===x.supplier_id)||{}).name||'',type:x.acquisition_type,barcode:x.barcode||'',status:x.status==='available'?'Disponível':x.status==='reserved'?'Reservada':x.status==='sold'?'Vendida':'Baixada'}));
+  db.bags={};
+  const bagById=new Map(b.data.map(x=>[x.id,x]));
+  for(const item of bi.data){
+    const bag=bagById.get(item.bag_id);if(!bag)continue;
+    if(!db.bags[bag.customer_id])db.bags[bag.customer_id]=[];
+    db.bags[bag.customer_id].push({id:item.id,productId:item.product_id,price:Number(item.price_snapshot||0),description:item.description_snapshot||'',size:item.size_snapshot||''});
+  }
+  render();
+}
+async function addClient(){
+  const name=el('cName').value.trim(),phone=el('cPhone').value.trim();
+  if(!name||!phone)return alert('Informe nome e telefone.');
+  const {data,error}=await sb.from('customers').insert({name,phone,notes:el('cObs').value.trim()||null}).select().single();
+  if(error)return reportError(error,'Não foi possível salvar a cliente.');
+  el('cName').value='';el('cPhone').value='';el('cObs').value='';
+  await loadCloud();alert('Cliente salva no Supabase.');
+}
+async function addSupplier(){
+  const name=el('sName').value.trim();if(!name)return alert('Informe o nome.');
+  const {error}=await sb.from('suppliers').insert({name,phone:el('sPhone').value.trim()||null,settlement_rule:el('sRule').value,active:true});
+  if(error)return reportError(error,'Não foi possível salvar a fornecedora.');
+  el('sName').value='';el('sPhone').value='';await loadCloud();alert('Fornecedora salva no Supabase.');
+}
+async function addProduct(){
+  const desc=el('pDesc').value.trim(),price=Number(el('pPrice').value),cost=Number(el('pCost').value||0);
+  if(!desc||!el('pPrice').value||price<=0||cost<0)return alert('Informe descrição e preço de venda válido.');
+  const barcode=el('pBarcode').value.trim()||('200'+String(Date.now()).slice(-10));
+  const short=el('pShort').value.trim()||String(Date.now()).slice(-3);
+  const supplierId=el('pSupplier').value||null;
+  const payload={description:desc,short_code:short,size:el('pSize').value.trim()||null,cost,sale_price:price,supplier_id:supplierId,acquisition_type:el('pType').value,barcode,status:'available'};
+  const {error}=await sb.from('products').insert(payload);
+  if(error)return reportError(error,'Não foi possível salvar o produto.');
+  ['pDesc','pShort','pSize','pCost','pPrice','pBarcode'].forEach(k=>el(k).value='');
+  await loadCloud();alert('Produto salvo no Supabase. Para imprimir a etiqueta, use a lista de produtos.');
+}
+function getOpenBag(customerId){
+  return sb.from('bags').select('*').eq('customer_id',customerId).eq('status','open').order('created_at',{ascending:false}).limit(1).maybeSingle();
+}
+async function addToBag(product){
+  const cid=el('liveClient').value;if(!cid)return alert('Selecione uma cliente primeiro.');
+  if(product.status!=='Disponível')return alert('Esta peça não está disponível.');
+  try{
+    let {data:bag,error}=await getOpenBag(cid);if(error)throw error;
+    if(!bag){const created=await sb.from('bags').insert({customer_id:cid,status:'open'}).select().single();if(created.error)throw created.error;bag=created.data;}
+    const {error:insertError}=await sb.from('bag_items').insert({bag_id:bag.id,product_id:product.id,description_snapshot:product.desc,size_snapshot:product.size||null,price_snapshot:product.price,status:'reserved'});
+    if(insertError)throw insertError;
+    const {error:updateError}=await sb.from('products').update({status:'reserved'}).eq('id',product.id).eq('status','available');
+    if(updateError)throw updateError;
+    await loadCloud();el('scan').focus();
+  }catch(err){reportError(err,'Não foi possível reservar esta peça.');}
+}
+async function scanProduct(){
+  const code=el('scan').value.trim();el('scan').value='';
+  const product=db.products.find(p=>p.barcode===code);if(!product)return alert('Código não encontrado.');
+  await addToBag(product);
+}
+async function scanShort(){
+  const code=el('shortScan').value.trim();el('shortScan').value='';
+  const product=db.products.find(p=>p.short===code);if(!product)return alert('Código curto não encontrado.');
+  await addToBag(product);
+}
+async function removeBagItem(customerId,itemId){
+  if(!confirm('Remover esta peça da sacolinha e devolver ao estoque?'))return;
+  try{
+    const {data:item,error}=await sb.from('bag_items').select('*').eq('id',itemId).single();if(error)throw error;
+    const del=await sb.from('bag_items').delete().eq('id',itemId);if(del.error)throw del.error;
+    const upd=await sb.from('products').update({status:'available'}).eq('id',item.product_id);if(upd.error)throw upd.error;
+    await loadCloud();
+  }catch(err){reportError(err,'Não foi possível remover a peça.');}
+}
+function reportError(err,prefix){console.error(err);alert(prefix+'\n\nDetalhe: '+(err.message||err.details||'erro não identificado'));}
+function render(){
+  el('mClients').textContent=db.clients.length;el('mProducts').textContent=db.products.length;
+  el('mAvailable').textContent=db.products.filter(p=>p.status==='Disponível').length;
+  el('mBags').textContent=Object.values(db.bags).filter(a=>a.length).length;
+  renderClients();renderSuppliers();renderProducts();renderStock();renderSelectors();renderCart();renderBags();
+}
+function renderClients(){
+  const q=(el('clientSearch').value||'').toLowerCase();
+  el('clientList').innerHTML=db.clients.filter(c=>(c.name+' '+c.phone).toLowerCase().includes(q))
+    .map(c=>`<div class="statline"><span><b>${esc(c.name)}</b><br><small>${esc(c.phone)}</small></span><span class="pill">Cliente</span></div>`).join('')||'<div class="empty">Nenhuma cliente cadastrada.</div>';
+}
+function renderSuppliers(){
+  el('supplierList').innerHTML=db.suppliers.map(s=>`<div class="statline"><span><b>${esc(s.name)}</b><br><small>${esc(s.phone)} • ${esc(ruleLabel(s.rule))}</small></span><span class="pill">Fornecedora</span></div>`).join('')||'<div class="empty">Nenhuma fornecedora cadastrada.</div>';
+}
+function renderProducts(){
+  el('productList').innerHTML=db.products.map(p=>`<div class="statline"><span><b>${esc(p.desc)}</b> <small>• ${esc(p.short)} • ${esc(p.barcode)}</small><br><small>${esc(typeLabel(p.type))} • ${esc(p.supplier||'Sem fornecedora')} • Custo ${money(p.cost)}</small><br><b>${money(p.price)}</b> <span class="pill">${esc(p.status)}</span></span><button class="secondary" onclick="label('${esc(p.id)}')">Etiqueta</button></div>`).join('')||'<div class="empty">Nenhum produto cadastrado.</div>';
+}
+function renderStock(){
+  el('stockList').innerHTML=db.products.map(p=>`<div class="statline"><span>${esc(p.desc)} <small>(${esc(p.short)})</small></span><span class="pill">${esc(p.status)}</span></div>`).join('')||'<div class="empty">Estoque vazio.</div>';
+}
+function renderSelectors(){
+  const ss=el('pSupplier').value,cc=el('liveClient').value;
+  el('pSupplier').innerHTML='<option value="">Sem fornecedora</option>'+db.suppliers.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
+  if(db.suppliers.some(s=>s.id===ss))el('pSupplier').value=ss;
+  el('liveClient').innerHTML='<option value="">Selecione uma cliente</option>'+db.clients.map(c=>`<option value="${c.id}">${esc(c.name)} — ${esc(c.phone)}</option>`).join('');
+  if(db.clients.some(c=>c.id===cc))el('liveClient').value=cc;
+}
+function renderCart(){
+  const cid=el('liveClient').value;if(!cid){el('cart').innerHTML='<div class="empty">Selecione uma cliente para visualizar a sacolinha.</div>';return;}
+  const items=db.bags[cid]||[];let total=0;
+  const rows=items.map(item=>{total+=Number(item.price||0);return `<div class="statline"><span>${esc(item.description)}<br><small>${esc(item.size)} • ${money(item.price)}</small></span><button class="danger" onclick="removeBagItem('${cid}','${item.id}')">Remover</button></div>`;}).join('');
+  el('cart').innerHTML=(rows||'<div class="empty">Esta sacolinha está vazia.</div>')+`<div class="statline"><b>Total da sacolinha</b><b>${money(total)}</b></div>`;
+}
+function renderBags(){
+  el('bagList').innerHTML=Object.entries(db.bags).filter(([,items])=>items.length).map(([cid,items])=>{
+    const customer=db.clients.find(c=>c.id===cid);const total=items.reduce((sum,i)=>sum+Number(i.price||0),0);
+    return `<div class="statline"><span><b>${esc(customer?customer.name:'Cliente')}</b><br><small>${items.length} peça(s)</small></span><b>${money(total)}</b></div>`;
+  }).join('')||'<div class="empty">Nenhuma sacolinha aberta.</div>';
+}
+function label(productId){
+  const p=db.products.find(x=>x.id===productId);if(!p)return alert('Produto não encontrado.');
+  const win=window.open('','_blank','width=420,height=500');if(!win)return alert('Permita a abertura de janelas para imprimir a etiqueta.');
+  win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Etiqueta</title><style>body{font:14px Arial;padding:18px;text-align:center}h2{font-size:16px}.short{font-size:26px;font-weight:bold}.price{font-size:22px;font-weight:bold}svg{width:100%;height:65px}</style></head><body><b>GARIMPEIRA DE CABIDE</b><h2>${esc(p.desc)}</h2><div>CÓDIGO LIVE</div><div class="short">${esc(p.short)}</div><div class="price">${money(p.price)}</div><svg id="b"></svg><div>${esc(p.barcode)}</div><script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"><\/script><script>JsBarcode('#b','${String(p.barcode).replace(/'/g,'')}',{format:'CODE128',displayValue:false});window.print();<\/script></body></html>`);win.document.close();
+}
+async function init(){
+  const {data:{session}}=await sb.auth.getSession();
+  if(session){currentUser=session.user;try{await loadCloud();el('loginScreen').style.display='none';el('app').style.display='block';el('logoutBtn').style.display='inline-block';setStatus('Conectado ao Supabase',true);}catch(err){setStatus('Falha ao carregar dados');reportError(err,'A sessão existe, mas não consegui carregar o banco.');}}
+  else setStatus('Aguardando login');
+}
+sb.auth.onAuthStateChange((event,session)=>{if(event==='SIGNED_OUT'){el('app').style.display='none';el('loginScreen').style.display='block';el('logoutBtn').style.display='none';}});
+init();
+</script>
+</body>
+</html>
