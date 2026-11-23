@@ -81,6 +81,7 @@ table{width:100%;border-collapse:collapse;margin-top:12px;background:white}th,td
     <h3>Cadastro de clientes</h3><div class="formgrid">
       <div class="field"><label for="cName">Nome</label><input id="cName" placeholder="Nome da cliente"></div>
       <div class="field"><label for="cPhone">Telefone / WhatsApp</label><input id="cPhone" placeholder="DDD + número"></div>
+      <div class="field"><label for="cEmail">E-mail para acesso ao portal</label><input id="cEmail" type="email" placeholder="cliente@email.com"></div>
       <div class="field"><label for="cObs">Observações</label><input id="cObs" placeholder="Opcional"></div>
     </div><button onclick="addClient()">Salvar cliente</button><input style="margin-top:14px" id="clientSearch" placeholder="Buscar por nome ou telefone..." oninput="renderClients()"><div id="clientList"></div>
   </div></section>
@@ -176,11 +177,11 @@ async function loadCloud(){
   render();
 }
 async function addClient(){
-  const name=el('cName').value.trim(),phone=el('cPhone').value.trim();
+  const name=el('cName').value.trim(),phone=el('cPhone').value.trim(),email=el('cEmail').value.trim().toLowerCase();
   if(!name||!phone)return alert('Informe nome e telefone.');
-  const {data,error}=await sb.from('customers').insert({name,phone,notes:el('cObs').value.trim()||null}).select().single();
+  const {data,error}=await sb.from('customers').insert({name,phone,email:email||null,notes:el('cObs').value.trim()||null}).select().single();
   if(error)return reportError(error,'Não foi possível salvar a cliente.');
-  el('cName').value='';el('cPhone').value='';el('cObs').value='';
+  el('cName').value='';el('cPhone').value='';el('cEmail').value='';el('cObs').value='';
   await loadCloud();alert('Cliente salva no Supabase.');
 }
 async function addSupplier(){
@@ -279,7 +280,7 @@ async function setBagDiscount(customerId){
   const subtotal=(db.bags[customerId]||[]).reduce((sum,item)=>sum+Number(item.price||0),0);
   const raw=prompt(`Subtotal: ${money(subtotal)}\nInforme o desconto em reais (ex.: 10,00). Digite 0 para retirar o desconto:`,String(meta.discount||0).replace('.',','));
   if(raw===null)return;
-  const amount=Number(raw.trim().replace(/\\./g,'').replace(',','.'));
+  const amount=parseMoneyInput(raw);
   if(!Number.isFinite(amount)||amount<0||amount>subtotal)return alert('Informe um desconto válido, sem ultrapassar o subtotal.');
   const reason=prompt('Motivo do desconto (opcional):',meta.reason||'');if(reason===null)return;
   const {error}=await sb.rpc('admin_set_bag_discount',{p_bag_id:meta.id,p_discount_amount:amount,p_reason:reason.trim()||null});
@@ -298,8 +299,7 @@ async function closeBag(customerId){
   else{
     const p=prompt('Quanto será pago no Pix? Use vírgula ou ponto para centavos:');if(p===null)return;
     const k=prompt('Quanto será pago no cartão? Use vírgula ou ponto para centavos:');if(k===null)return;
-    const parse=v=>Number(v.trim().replace(/\\./g,'').replace(',','.'));
-    pix=parse(p);card=parse(k);
+    pix=parseMoneyInput(p);card=parseMoneyInput(k);
     if(!Number.isFinite(pix)||!Number.isFinite(card)||Math.round((pix+card)*100)!==Math.round(total*100))return alert('A soma do Pix e do cartão precisa ser igual ao total.');
   }
   if(!confirm(`Confirmar fechamento?\nTotal: ${money(total)}\nPagamento: ${method==='pix'?'Pix':method==='card'?'Cartão':'Misto'}`))return;
