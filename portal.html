@@ -62,7 +62,7 @@ $('createAccountBtn').onclick=async()=>{
   const name=$('name').value.trim(),phone=$('phone').value.trim(),email=$('email').value.trim().toLowerCase(),password=$('password').value;
   if(!name||!phone||!email||password.length<8){msg('Preencha nome, telefone, e-mail e senha com pelo menos 8 caracteres.');return}
   msg('Criando seu acesso…');
-  const {error}=await sb.auth.signUp({email,password,options:{data:{full_name:name,role:'customer'}}});
+  const {error}=await sb.auth.signUp({email,password,options:{emailRedirectTo:window.location.href,data:{full_name:name,role:'customer'}}});
   if(error){msg(error.message);return}
   msg('Cadastro iniciado! Confirme o e-mail enviado para ativar seu acesso. Depois volte aqui e entre com seu e-mail e senha. Use o mesmo telefone cadastrado no brechó.');
 };
