@@ -122,7 +122,7 @@ table{width:100%;border-collapse:collapse;margin-top:12px;background:white}th,td
 const SUPABASE_URL = 'https://gcyuvbakxswkjcyqscth.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_haoKT8vSzAEpxwfsapBM1A_4REUsg8T';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-let db = {clients:[], suppliers:[], products:[], bags:{}, bagMeta:{}};
+let db = {clients:[], suppliers:[], products:[], bags:{}, bagMeta:{}, closeRequests:{}};
 let currentUser = null;
 const el = id => document.getElementById(id);
 const money = n => Number(n || 0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
@@ -145,7 +145,7 @@ async function login(email,password){
   setStatus('Conectado ao Supabase',true);
 }
 async function logout(){
-  await sb.auth.signOut();currentUser=null;db={clients:[],suppliers:[],products:[],bags:{},bagMeta:{}};
+  await sb.auth.signOut();currentUser=null;db={clients:[],suppliers:[],products:[],bags:{},bagMeta:{},closeRequests:{}};
   el('app').style.display='none';el('loginScreen').style.display='block';el('logoutBtn').style.display='none';
   setStatus('Sessão encerrada');
 }
@@ -155,20 +155,22 @@ el('loginForm').addEventListener('submit',async e=>{
   catch(err){console.error(err);el('loginMessage').textContent='Não foi possível entrar: '+(err.message||'verifique e-mail e senha');}
 });
 async function loadCloud(){
-  const [c,s,p,b,bi]=await Promise.all([
+  const [c,s,p,b,bi,cr]=await Promise.all([
     sb.from('customers').select('*').order('created_at',{ascending:false}),
     sb.from('suppliers').select('*').eq('active',true).order('name'),
     sb.from('products').select('*').order('created_at',{ascending:false}),
     sb.from('bags').select('*').eq('status','open').order('created_at',{ascending:false}),
-    sb.from('bag_items').select('*').eq('status','reserved').order('added_at',{ascending:true})
+    sb.from('bag_items').select('*').eq('status','reserved').order('added_at',{ascending:true}),
+    sb.from('bag_close_requests').select('*').eq('status','pending')
   ]);
-  for(const r of [c,s,p,b,bi]) if(r.error) throw r.error;
+  for(const r of [c,s,p,b,bi,cr]) if(r.error) throw r.error;
   db.clients=c.data.map(x=>({id:x.id,name:x.name,phone:x.phone||'',obs:x.notes||''}));
   db.suppliers=s.data.map(x=>({id:x.id,name:x.name,phone:x.phone||'',rule:x.settlement_rule||'',notes:x.notes||''}));
   db.products=p.data.map(x=>({id:x.id,desc:x.description,short:x.short_code||'',size:x.size||'',cost:Number(x.cost||0),price:Number(x.sale_price||0),supplierId:x.supplier_id, supplier:(s.data.find(y=>y.id===x.supplier_id)||{}).name||'',type:x.acquisition_type,barcode:x.barcode||'',status:x.status==='available'?'Disponível':x.status==='reserved'?'Reservada':x.status==='sold'?'Vendida':'Baixada'}));
-  db.bags={};db.bagMeta={};
+  db.bags={};db.bagMeta={};db.closeRequests={};
   const bagById=new Map(b.data.map(x=>[x.id,x]));
   for(const bag of b.data){db.bags[bag.customer_id]=[];db.bagMeta[bag.customer_id]={id:bag.id,discount:Number(bag.discount_amount||0),reason:bag.discount_reason||''};}
+  for(const req of cr.data){db.closeRequests[req.bag_id]=req;}
   for(const item of bi.data){
     const bag=bagById.get(item.bag_id);if(!bag)continue;
     if(!db.bags[bag.customer_id])db.bags[bag.customer_id]=[];
@@ -311,7 +313,8 @@ function renderBags(){
   el('bagList').innerHTML=Object.entries(db.bags).filter(([,items])=>items.length).map(([cid,items])=>{
     const customer=db.clients.find(c=>c.id===cid);const total=items.reduce((sum,i)=>sum+Number(i.price||0),0);
     const meta=db.bagMeta[cid];const finalTotal=Math.max(0,total-Number(meta?.discount||0));
-    return `<div class="statline"><span><b>${esc(customer?customer.name:'Cliente')}</b><br><small>${items.length} peça(s) • desconto ${money(meta?.discount||0)}</small></span><span><b>${money(finalTotal)}</b><br><button class="secondary" onclick="el('liveClient').value='${cid}';show('live')">Abrir sacolinha</button></span></div>`;
+    const request=db.closeRequests[meta?.id];const payLabel=request?.payment_method==='pix'?'Pix':request?.payment_method==='card'?'Cartão':request?.payment_method==='mixed'?'Pix + cartão':'';
+    return `<div class="statline"><span><b>${esc(customer?customer.name:'Cliente')}</b><br><small>${items.length} peça(s) • desconto ${money(meta?.discount||0)}${request?' • <b>Solicitou fechamento: '+payLabel+'</b>':''}</small></span><span><b>${money(finalTotal)}</b><br><button class="secondary" onclick="el('liveClient').value='${cid}';show('live')">Abrir sacolinha</button></span></div>`;
   }).join('')||'<div class="empty">Nenhuma sacolinha aberta.</div>';
 }
 function label(productId){
