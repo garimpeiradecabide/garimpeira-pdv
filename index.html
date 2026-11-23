@@ -273,7 +273,7 @@ function renderCart(){
     `<div class="statline"><span>Subtotal</span><b>${money(subtotal)}</b></div><div class="statline"><span>Desconto administrativo</span><b>${money(discount)}</b></div><div class="statline"><b>Total da sacolinha</b><b>${money(total)}</b></div>`+
     (meta?`<div class="row" style="margin-top:12px"><button class="secondary" onclick="setBagDiscount('${cid}')">Conceder / alterar desconto</button><button onclick="closeBag('${cid}')" ${items.length?'':'disabled'}>Fechar sacolinha e registrar pagamento</button></div>`:'');
 }
-function parseMoneyInput(value){const s=String(value).trim().replace(/\\s/g,'');return Number(s.includes(',')?s.replace(/\\./g,'').replace(',','.'):s);}
+function parseMoneyInput(value){const s=String(value).trim().replaceAll(' ','');return Number(s.includes(',')?s.split('.').join('').replace(',','.'):s);}
 async function setBagDiscount(customerId){
   const meta=db.bagMeta[customerId];if(!meta)return alert('Esta cliente ainda não possui sacolinha aberta.');
   const subtotal=(db.bags[customerId]||[]).reduce((sum,item)=>sum+Number(item.price||0),0);
