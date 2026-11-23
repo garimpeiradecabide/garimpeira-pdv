@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Minha Sacolinha • Garimpeira de Cabide</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{--green:#52634b;--pale:#e9eee5;--ink:#263027;--muted:#748071;--line:#e4e8e1;--cream:#f7f7f2}
+*{box-sizing:border-box}body{margin:0;background:var(--cream);color:var(--ink);font:15px/1.5 Inter,system-ui,Arial}
+header{background:white;border-bottom:1px solid var(--line);padding:17px 20px}.brand{max-width:900px;margin:auto;color:var(--green);font-weight:800;letter-spacing:.08em}.brand small{display:block;color:var(--muted);font-size:11px;letter-spacing:.02em;font-weight:500}
+main{max-width:900px;margin:26px auto;padding:0 16px}.card{background:white;border:1px solid var(--line);border-radius:16px;padding:20px;margin:14px 0}
+h1{font-size:25px;margin:0 0 5px}h2{font-size:19px;margin:0 0 12px}p{margin:6px 0;color:var(--muted)}
+label{display:block;font-size:12px;font-weight:700;color:var(--muted);margin:12px 0 5px}
+input{width:100%;padding:12px;border:1px solid var(--line);border-radius:9px;font:inherit}
+button{border:0;border-radius:9px;padding:11px 15px;background:var(--green);color:white;font-weight:700;cursor:pointer;margin-top:12px}
+button.secondary{background:white;color:var(--green);border:1px solid var(--line)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between}
+.hidden{display:none!important}.muted{color:var(--muted);font-size:13px}.line{border-top:1px solid var(--line);padding:11px 0;display:flex;justify-content:space-between;gap:14px}
+.total{font-size:20px;font-weight:800;color:var(--green)}.pill{background:var(--pale);color:var(--green);border-radius:30px;padding:4px 9px;font-size:11px;font-weight:700}
+#message{font-size:13px;color:#8a5138;white-space:pre-wrap}.empty{text-align:center;padding:25px;color:var(--muted)}
+@media(max-width:520px){.card{padding:15px}h1{font-size:21px}}
+</style></head>
+<body>
+<header><div class="brand">GARIMPEIRA DE CABIDE<small>MINHA SACOLINHA • MODA CIRCULAR COM CARINHO</small></div></header>
+<main>
+<section id="auth" class="card">
+<h1>Bem-vinda à sua sacolinha 🤍</h1><p>Acompanhe suas peças reservadas, compras e entregas.</p>
+<div id="registerFields" class="hidden"><label for="name">Nome completo</label><input id="name" autocomplete="name" placeholder="Seu nome">
+<label for="phone">Telefone cadastrado no brechó</label><input id="phone" autocomplete="tel" placeholder="DDD + número"></div>
+<label for="email">E-mail</label><input id="email" type="email" autocomplete="email" placeholder="seu@email.com">
+<label for="password">Senha</label><input id="password" type="password" autocomplete="current-password" minlength="8" placeholder="Mínimo de 8 caracteres">
+<div class="row"><button id="loginBtn">Entrar</button><button id="registerBtn" class="secondary">Criar meu acesso</button></div>
+<p id="message"></p><p class="muted">Para criar seu acesso, seu e-mail e telefone precisam estar cadastrados pela Garimpeira. Após o cadastro, confirme o e-mail enviado.</p>
+</section>
+<section id="portal" class="hidden">
+<div class="row"><div><h1 id="welcome">Minha sacolinha</h1><p>Suas compras e informações em um só lugar.</p></div><button class="secondary" id="logoutBtn">Sair</button></div>
+<div class="card"><h2>Sacolinha atual</h2><div id="currentBag" class="empty">Carregando…</div></div>
+<div class="card"><h2>Histórico de compras</h2><div id="history" class="empty">Carregando…</div></div>
+<div class="card"><h2>Entregas</h2><div id="deliveries" class="empty">Nenhuma entrega cadastrada.</div></div>
+</section>
+</main>
+<script>
+'use strict';
+const URL='https://gcyuvbakxswkjcyqscth.supabase.co';
+const KEY='sb_publishable_haoKT8vSzAEpxwfsapBM1A_4REUsg8T';
+const sb=window.supabase.createClient(URL,KEY);
+const $=id=>document.getElementById(id);
+const money=n=>Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let mode='login';
+function msg(t){$('message').textContent=t}
+function setMode(m){mode=m;$('registerFields').classList.toggle('hidden',m!=='register');$('loginBtn').classList.toggle('hidden',m==='register');$('registerBtn').textContent=m==='register'?'Voltar para entrar':'Criar meu acesso';msg('')}
+$('registerBtn').onclick=async()=>{if(mode==='register'){setMode('login');return}setMode('register')};
+$('loginBtn').onclick=async()=>{
+  msg('Entrando…');
+  const {error}=await sb.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});
+  if(error){msg(error.message);return}
+  await startPortal();
+};
+$('registerBtn').addEventListener('click',async()=>{
+  if(mode!=='register')return;
+  const name=$('name').value.trim(),phone=$('phone').value.trim(),email=$('email').value.trim().toLowerCase(),password=$('password').value;
+  if(!name||!phone||!email||password.length<8){msg('Preencha nome, telefone, e-mail e senha com pelo menos 8 caracteres.');return}
+  msg('Criando seu acesso…');
+  const {error}=await sb.auth.signUp({email,password,options:{data:{full_name:name,role:'customer'}}});
+  if(error){msg(error.message);return}
+  msg('Cadastro iniciado! Confirme o e-mail enviado para ativar seu acesso. Depois volte aqui e entre com seu e-mail e senha. Use o mesmo telefone cadastrado no brechó.');
+});
+$('logoutBtn').onclick=async()=>{await sb.auth.signOut();$('portal').classList.add('hidden');$('auth').classList.remove('hidden')};
+async function startPortal(){
+  const {data:{user}}=await sb.auth.getUser();if(!user)return;
+  let customer;
+  const own=await sb.from('customers').select('*').eq('auth_user_id',user.id).maybeSingle();
+  if(own.error){msg(own.error.message);return}
+  customer=own.data;
+  if(!customer){
+    const phone=prompt('Para localizar seu cadastro na Garimpeira, informe o telefone que está registrado no brechó:');
+    if(!phone){await sb.auth.signOut();return}
+    const claim=await sb.rpc('customer_claim_account',{p_phone:phone});
+    if(claim.error){msg(claim.error.message);return}
+    const again=await sb.from('customers').select('*').eq('auth_user_id',user.id).single();
+    if(again.error){msg(again.error.message);return}
+    customer=again.data;
+  }
+  $('auth').classList.add('hidden');$('portal').classList.remove('hidden');$('welcome').textContent='Olá, '+customer.name+'!';
+  await loadCustomerData(customer);
+}
+async function loadCustomerData(customer){
+  const bags=await sb.from('bags').select('*').eq('customer_id',customer.id).order('created_at',{ascending:false});
+  if(bags.error){$('currentBag').textContent=bags.error.message;return}
+  const ids=bags.data.map(b=>b.id);
+  let items=[],payments=[],deliveries=[];
+  if(ids.length){
+    const [i,p,d]=await Promise.all([
+      sb.from('bag_items').select('*').in('bag_id',ids).order('added_at',{ascending:true}),
+      sb.from('payments').select('*').in('bag_id',ids).order('created_at',{ascending:false}),
+      sb.from('deliveries').select('*').in('bag_id',ids).order('created_at',{ascending:false})
+    ]);
+    if(i.error||p.error||d.error){$('currentBag').textContent=(i.error||p.error||d.error).message;return}
+    items=i.data;payments=p.data;deliveries=d.data;
+  }
+  const open=bags.data.filter(b=>b.status==='open');
+  const openItems=items.filter(i=>open.some(b=>b.id===i.bag_id)&&i.status==='reserved');
+  if(open.length){
+    const bag=open[0],list=openItems.filter(i=>i.bag_id===bag.id);
+    const subtotal=list.reduce((s,i)=>s+Number(i.price_snapshot||0),0),discount=Number(bag.discount_amount||0),total=Math.max(0,subtotal-discount);
+    $('currentBag').innerHTML=(list.map(i=>'<div class="line"><span>'+esc(i.description_snapshot)+'<br><small class="muted">'+esc(i.size_snapshot||'')+'</small></span><b>'+money(i.price_snapshot)+'</b></div>').join('')||'<div class="empty">Sua sacolinha ainda está vazia.</div>')+
+      '<div class="line"><span>Subtotal</span><b>'+money(subtotal)+'</b></div>'+
+      (discount?'<div class="line"><span>Desconto concedido pela Garimpeira</span><b>− '+money(discount)+'</b></div>':'')+
+      '<div class="line"><b>Total atual</b><span class="total">'+money(total)+'</span></div>'+
+      '<p class="muted">Para fechar sua sacolinha ou combinar o pagamento, fale com a Garimpeira pelo WhatsApp.</p>';
+  }else $('currentBag').innerHTML='<div class="empty">Você não tem sacolinha aberta no momento.</div>';
+  const closed=bags.data.filter(b=>b.status==='closed');
+  $('history').innerHTML=closed.length?closed.map(b=>{
+    const its=items.filter(i=>i.bag_id===b.id),paid=payments.filter(p=>p.bag_id===b.id);
+    return '<div class="line"><span><b>Compra de '+new Date(b.created_at).toLocaleDateString('pt-BR')+'</b><br><small class="muted">'+its.length+' peça(s) • '+paid.map(p=>esc(p.method)+' '+money(p.amount)).join(' + ')+'</small></span><b>'+money(its.reduce((s,i)=>s+Number(i.price_snapshot||0),0)-Number(b.discount_amount||0))+'</b></div>';
+  }).join(''):'<div class="empty">Suas compras finalizadas aparecerão aqui.</div>';
+  $('deliveries').innerHTML=deliveries.length?deliveries.map(d=>'<div class="line"><span><b>'+esc(d.status)+'</b><br><small class="muted">'+esc(d.address||'Endereço não informado')+(d.tracking_code?' • Rastreio: '+esc(d.tracking_code):'')+'</small></span><b>'+money(d.shipping_cost)+'</b></div>').join(''):'<div class="empty">Nenhuma entrega cadastrada.</div>';
+}
+(async()=>{const {data:{session}}=await sb.auth.getSession();if(session)await startPortal()})();
+</script>
+</body></html>
