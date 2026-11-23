@@ -29,7 +29,7 @@ button.secondary{background:white;color:var(--green);border:1px solid var(--line
 <label for="phone">Telefone cadastrado no brechó</label><input id="phone" autocomplete="tel" placeholder="DDD + número"></div>
 <label for="email">E-mail</label><input id="email" type="email" autocomplete="email" placeholder="seu@email.com">
 <label for="password">Senha</label><input id="password" type="password" autocomplete="current-password" minlength="8" placeholder="Mínimo de 8 caracteres">
-<div class="row"><button id="loginBtn">Entrar</button><button id="registerBtn" class="secondary">Criar meu acesso</button></div>
+<div class="row"><button id="loginBtn">Entrar</button><button id="registerBtn" class="secondary">Criar meu acesso</button><button id="createAccountBtn" class="hidden">Cadastrar</button></div>
 <p id="message"></p><p class="muted">Para criar seu acesso, seu e-mail e telefone precisam estar cadastrados pela Garimpeira. Após o cadastro, confirme o e-mail enviado.</p>
 </section>
 <section id="portal" class="hidden">
@@ -49,15 +49,15 @@ const money=n=>Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'B
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let mode='login';
 function msg(t){$('message').textContent=t}
-function setMode(m){mode=m;$('registerFields').classList.toggle('hidden',m!=='register');$('loginBtn').classList.toggle('hidden',m==='register');$('registerBtn').textContent=m==='register'?'Voltar para entrar':'Criar meu acesso';msg('')}
-$('registerBtn').onclick=async()=>{if(mode==='register'){setMode('login');return}setMode('register')};
+function setMode(m){mode=m;$('registerFields').classList.toggle('hidden',m!=='register');$('loginBtn').classList.toggle('hidden',m==='register');$('createAccountBtn').classList.toggle('hidden',m!=='register');$('registerBtn').textContent=m==='register'?'Voltar para entrar':'Criar meu acesso';msg('')}
+$('registerBtn').onclick=()=>{setMode(mode==='register'?'login':'register')};
 $('loginBtn').onclick=async()=>{
   msg('Entrando…');
   const {error}=await sb.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});
   if(error){msg(error.message);return}
   await startPortal();
 };
-$('registerBtn').addEventListener('click',async()=>{
+$('createAccountBtn').onclick=async()=>{
   if(mode!=='register')return;
   const name=$('name').value.trim(),phone=$('phone').value.trim(),email=$('email').value.trim().toLowerCase(),password=$('password').value;
   if(!name||!phone||!email||password.length<8){msg('Preencha nome, telefone, e-mail e senha com pelo menos 8 caracteres.');return}
@@ -65,7 +65,7 @@ $('registerBtn').addEventListener('click',async()=>{
   const {error}=await sb.auth.signUp({email,password,options:{data:{full_name:name,role:'customer'}}});
   if(error){msg(error.message);return}
   msg('Cadastro iniciado! Confirme o e-mail enviado para ativar seu acesso. Depois volte aqui e entre com seu e-mail e senha. Use o mesmo telefone cadastrado no brechó.');
-});
+};
 $('logoutBtn').onclick=async()=>{await sb.auth.signOut();$('portal').classList.add('hidden');$('auth').classList.remove('hidden')};
 async function startPortal(){
   const {data:{user}}=await sb.auth.getUser();if(!user)return;
