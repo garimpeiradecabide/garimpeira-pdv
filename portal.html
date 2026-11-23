@@ -35,6 +35,10 @@ button.secondary{background:white;color:var(--green);border:1px solid var(--line
 <div class="card"><h2>Sacolinha atual</h2><div id="currentBag" class="empty">Carregando…</div></div>
 <div class="card"><h2>Histórico de compras</h2><div id="history" class="empty">Carregando…</div></div>
 <div class="card"><h2>Entregas</h2><div id="deliveries" class="empty">Nenhuma entrega cadastrada.</div></div>
+<div class="card"><h2>Segurança da conta</h2><p>Você pode trocar sua senha quando quiser.</p>
+<label for="newPassword">Nova senha</label><input id="newPassword" type="password" minlength="10" autocomplete="new-password" placeholder="Pelo menos 10 caracteres">
+<label for="confirmPassword">Confirme a nova senha</label><input id="confirmPassword" type="password" minlength="10" autocomplete="new-password" placeholder="Digite novamente">
+<button id="changePasswordBtn">Alterar minha senha</button><p id="passwordMessage" class="muted"></p></div>
 </section>
 </main>
 <script>
@@ -56,6 +60,7 @@ $('loginBtn').onclick=async()=>{
   if(error){msg('Não foi possível entrar. Confira o celular e a senha ou fale com a Garimpeira para receber uma nova senha.');return}
   await startPortal();
 };
+$('changePasswordBtn').onclick=async()=>{const p=$('newPassword').value,q=$('confirmPassword').value;if(p.length<10){$('passwordMessage').textContent='Use pelo menos 10 caracteres.';return}if(p!==q){$('passwordMessage').textContent='As senhas não conferem.';return}const {error}=await sb.auth.updateUser({password:p});$('passwordMessage').textContent=error?'Não foi possível alterar a senha: '+error.message:'Senha alterada com sucesso.';if(!error){$('newPassword').value='';$('confirmPassword').value=''}};
 $('logoutBtn').onclick=async()=>{await sb.auth.signOut();$('portal').classList.add('hidden');$('auth').classList.remove('hidden')};
 async function startPortal(){
   const {data:{user}}=await sb.auth.getUser();if(!user)return;
