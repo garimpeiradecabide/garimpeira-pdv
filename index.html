@@ -164,7 +164,7 @@ async function loadCloud(){
     sb.from('bag_close_requests').select('*').eq('status','pending')
   ]);
   for(const r of [c,s,p,b,bi,cr]) if(r.error) throw r.error;
-  db.clients=c.data.map(x=>({id:x.id,name:x.name,phone:x.phone||'',obs:x.notes||''}));
+  db.clients=c.data.map(x=>({id:x.id,name:x.name,phone:x.phone||'',email:x.email||'',obs:x.notes||''}));
   db.suppliers=s.data.map(x=>({id:x.id,name:x.name,phone:x.phone||'',rule:x.settlement_rule||'',notes:x.notes||''}));
   db.products=p.data.map(x=>({id:x.id,desc:x.description,short:x.short_code||'',size:x.size||'',cost:Number(x.cost||0),price:Number(x.sale_price||0),supplierId:x.supplier_id, supplier:(s.data.find(y=>y.id===x.supplier_id)||{}).name||'',type:x.acquisition_type,barcode:x.barcode||'',status:x.status==='available'?'Disponível':x.status==='reserved'?'Reservada':x.status==='sold'?'Vendida':'Baixada'}));
   db.bags={};db.bagMeta={};db.closeRequests={};
@@ -249,8 +249,9 @@ function render(){
 function renderClients(){
   const q=(el('clientSearch').value||'').toLowerCase();
   el('clientList').innerHTML=db.clients.filter(c=>(c.name+' '+c.phone).toLowerCase().includes(q))
-    .map(c=>`<div class="statline"><span><b>${esc(c.name)}</b><br><small>${esc(c.phone)}</small></span><span class="pill">Cliente</span></div>`).join('')||'<div class="empty">Nenhuma cliente cadastrada.</div>';
+    .map(c=>`<div class="statline"><span><b>${esc(c.name)}</b><br><small>${esc(c.phone)} • ${esc(c.email||'Sem e-mail para o portal')}</small></span><button class="secondary" onclick="setCustomerEmail('${c.id}')">${c.email?'Alterar e-mail':'Cadastrar e-mail do portal'}</button></div>`).join('')||'<div class="empty">Nenhuma cliente cadastrada.</div>';
 }
+async function setCustomerEmail(customerId){const customer=db.clients.find(x=>x.id===customerId);if(!customer)return;const email=prompt('E-mail que a cliente usará para criar o acesso ao portal:',customer.email||'');if(email===null)return;const normalized=email.trim().toLowerCase();if(normalized&&!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(normalized))return alert('Informe um e-mail válido.');const {error}=await sb.from('customers').update({email:normalized||null}).eq('id',customerId);if(error)return reportError(error,'Não foi possível atualizar o e-mail.');await loadCloud();alert('E-mail do portal atualizado. Oriente a cliente a criar o acesso em portal.html.');}
 function renderSuppliers(){
   el('supplierList').innerHTML=db.suppliers.map(s=>`<div class="statline"><span><b>${esc(s.name)}</b><br><small>${esc(s.phone)} • ${esc(ruleLabel(s.rule))}</small></span><span class="pill">Fornecedora</span></div>`).join('')||'<div class="empty">Nenhuma fornecedora cadastrada.</div>';
 }
