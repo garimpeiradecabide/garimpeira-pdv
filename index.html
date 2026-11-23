@@ -258,7 +258,7 @@ async function generateCustomerAccess(customerId){
   const {data,error}=await sb.functions.invoke('admin-create-customer-login',{body:{customer_id:customerId}});
   if(error)return reportError(error,'Não foi possível gerar o acesso da cliente.');
   if(data?.error)return alert(data.error);
-  const text='GARIMPEIRA DE CABIDE\\nAcesso ao portal: https://garimpeiradecabide.github.io/garimpeira-pdv/portal.html\\nCelular: '+customer.phone+'\\nSenha: '+data.password+'\\n\\nGuarde esta senha em local seguro. No primeiro acesso, recomendamos trocar a senha.';
+  const text='GARIMPEIRA DE CABIDE\\nAcesso ao portal: link será informado pela Garimpeira\\nCelular: '+customer.phone+'\\nSenha: '+data.password+'\\n\\nGuarde esta senha em local seguro. Você poderá alterá-la dentro do portal.';
   prompt('Acesso criado para '+customer.name+'. Copie e envie a senha em particular pelo WhatsApp. Ela só será exibida agora:',text);
   await loadCloud();
 }
