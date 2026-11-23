@@ -50,13 +50,13 @@ const $=id=>document.getElementById(id);
 const money=n=>Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function msg(t){$('message').textContent=t}
-function normalizePhone(value){let d=String(value||'').replace(/\\D/g,'');if(d.startsWith('55')&&d.length>11)d=d.slice(2);if(d.length!==10&&d.length!==11)return null;return '+55'+d}
+function normalizePhone(value){let d=String(value||'').replace(/\D/g,'');if(d.startsWith('55')&&(d.length===12||d.length===13))d=d.slice(2);if(d.length!==10&&d.length!==11)return null;return d}
 $('loginBtn').onclick=async()=>{
   const phone=normalizePhone($('phone').value),password=$('password').value;
   if(!phone){msg('Informe o celular com DDD cadastrado na Garimpeira.');return}
   if(!password){msg('Informe sua senha.');return}
   msg('Entrando…');
-  const {error}=await sb.auth.signInWithPassword({phone,password});
+  const {error}=await sb.auth.signInWithPassword({email:'c'+phone+'@login.garimpeiradecabide.com',password});
   if(error){msg('Não foi possível entrar. Confira o celular e a senha ou fale com a Garimpeira para receber uma nova senha.');return}
   await startPortal();
 };
