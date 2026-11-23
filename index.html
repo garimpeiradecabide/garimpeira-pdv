@@ -292,7 +292,8 @@ async function setBagDiscount(customerId){
 async function closeBag(customerId){
   const meta=db.bagMeta[customerId],items=db.bags[customerId]||[];if(!meta||!items.length)return alert('A sacolinha está vazia.');
   const subtotal=items.reduce((sum,item)=>sum+Number(item.price||0),0),total=Math.max(0,subtotal-Number(meta.discount||0));
-  const methodRaw=prompt(`Total a receber: ${money(total)}\nDigite PIX, CARTAO ou MISTO:`,'PIX');if(methodRaw===null)return;
+  const requested=db.closeRequests[meta.id];const suggested=requested?.payment_method==='pix'?'PIX':requested?.payment_method==='card'?'CARTAO':requested?.payment_method==='mixed'?'MISTO':'PIX';
+  const methodRaw=prompt(`Total a receber: ${money(total)}\nForma escolhida pela cliente: ${suggested}\nConfirme ou altere: PIX, CARTAO ou MISTO:`,suggested);if(methodRaw===null)return;
   const methodMap={PIX:'pix',CARTAO:'card',CARTÃO:'card',MISTO:'mixed'};const method=methodMap[methodRaw.trim().toUpperCase()];
   if(!method)return alert('Forma inválida. Digite PIX, CARTAO ou MISTO.');
   let pix=0,card=0;
