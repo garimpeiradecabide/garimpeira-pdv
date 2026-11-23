@@ -25,12 +25,10 @@ button.secondary{background:white;color:var(--green);border:1px solid var(--line
 <main>
 <section id="auth" class="card">
 <h1>Bem-vinda à sua sacolinha 🤍</h1><p>Acompanhe suas peças reservadas, compras e entregas.</p>
-<div id="registerFields" class="hidden"><label for="name">Nome completo</label><input id="name" autocomplete="name" placeholder="Seu nome">
-<label for="phone">Telefone cadastrado no brechó</label><input id="phone" autocomplete="tel" placeholder="DDD + número"></div>
-<label for="email">E-mail</label><input id="email" type="email" autocomplete="email" placeholder="seu@email.com">
-<label for="password">Senha</label><input id="password" type="password" autocomplete="current-password" minlength="8" placeholder="Mínimo de 8 caracteres">
-<div class="row"><button id="loginBtn">Entrar</button><button id="registerBtn" class="secondary">Criar meu acesso</button><button id="createAccountBtn" class="hidden">Cadastrar</button></div>
-<p id="message"></p><p class="muted">Para criar seu acesso, seu e-mail e telefone precisam estar cadastrados pela Garimpeira. Após o cadastro, confirme o e-mail enviado.</p>
+<label for="phone">Celular cadastrado na Garimpeira</label><input id="phone" type="tel" autocomplete="tel" placeholder="(11) 99999-9999">
+<label for="password">Sua senha</label><input id="password" type="password" autocomplete="current-password" placeholder="Senha fornecida pela Garimpeira">
+<div class="row"><button id="loginBtn">Entrar</button></div>
+<p id="message"></p><p class="muted">Seu acesso é criado pela Garimpeira. Se ainda não recebeu sua senha ou precisar de uma nova, fale conosco pelo WhatsApp.</p>
 </section>
 <section id="portal" class="hidden">
 <div class="row"><div><h1 id="welcome">Minha sacolinha</h1><p>Suas compras e informações em um só lugar.</p></div><button class="secondary" id="logoutBtn">Sair</button></div>
@@ -47,24 +45,16 @@ const sb=window.supabase.createClient(URL,KEY);
 const $=id=>document.getElementById(id);
 const money=n=>Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let mode='login';
 function msg(t){$('message').textContent=t}
-function setMode(m){mode=m;$('registerFields').classList.toggle('hidden',m!=='register');$('loginBtn').classList.toggle('hidden',m==='register');$('createAccountBtn').classList.toggle('hidden',m!=='register');$('registerBtn').textContent=m==='register'?'Voltar para entrar':'Criar meu acesso';msg('')}
-$('registerBtn').onclick=()=>{setMode(mode==='register'?'login':'register')};
+function normalizePhone(value){let d=String(value||'').replace(/\\D/g,'');if(d.startsWith('55')&&d.length>11)d=d.slice(2);if(d.length!==10&&d.length!==11)return null;return '+55'+d}
 $('loginBtn').onclick=async()=>{
+  const phone=normalizePhone($('phone').value),password=$('password').value;
+  if(!phone){msg('Informe o celular com DDD cadastrado na Garimpeira.');return}
+  if(!password){msg('Informe sua senha.');return}
   msg('Entrando…');
-  const {error}=await sb.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});
-  if(error){msg(error.message);return}
+  const {error}=await sb.auth.signInWithPassword({phone,password});
+  if(error){msg('Não foi possível entrar. Confira o celular e a senha ou fale com a Garimpeira para receber uma nova senha.');return}
   await startPortal();
-};
-$('createAccountBtn').onclick=async()=>{
-  if(mode!=='register')return;
-  const name=$('name').value.trim(),phone=$('phone').value.trim(),email=$('email').value.trim().toLowerCase(),password=$('password').value;
-  if(!name||!phone||!email||password.length<8){msg('Preencha nome, telefone, e-mail e senha com pelo menos 8 caracteres.');return}
-  msg('Criando seu acesso…');
-  const {error}=await sb.auth.signUp({email,password,options:{emailRedirectTo:window.location.href,data:{full_name:name,role:'customer'}}});
-  if(error){msg(error.message);return}
-  msg('Cadastro iniciado! Confirme o e-mail enviado para ativar seu acesso. Depois volte aqui e entre com seu e-mail e senha. Use o mesmo telefone cadastrado no brechó.');
 };
 $('logoutBtn').onclick=async()=>{await sb.auth.signOut();$('portal').classList.add('hidden');$('auth').classList.remove('hidden')};
 async function startPortal(){
@@ -73,15 +63,7 @@ async function startPortal(){
   const own=await sb.from('customers').select('*').eq('auth_user_id',user.id).maybeSingle();
   if(own.error){msg(own.error.message);return}
   customer=own.data;
-  if(!customer){
-    const phone=prompt('Para localizar seu cadastro na Garimpeira, informe o telefone que está registrado no brechó:');
-    if(!phone){await sb.auth.signOut();return}
-    const claim=await sb.rpc('customer_claim_account',{p_phone:phone});
-    if(claim.error){msg(claim.error.message);return}
-    const again=await sb.from('customers').select('*').eq('auth_user_id',user.id).single();
-    if(again.error){msg(again.error.message);return}
-    customer=again.data;
-  }
+  if(!customer){await sb.auth.signOut();msg('Este acesso ainda não está vinculado a um cadastro de cliente. Fale com a Garimpeira.');return}
   $('auth').classList.add('hidden');$('portal').classList.remove('hidden');$('welcome').textContent='Olá, '+customer.name+'!';
   await loadCustomerData(customer);
 }
