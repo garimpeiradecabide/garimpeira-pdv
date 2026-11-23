@@ -85,19 +85,21 @@ async function startPortal(){
   $('auth').classList.add('hidden');$('portal').classList.remove('hidden');$('welcome').textContent='Olá, '+customer.name+'!';
   await loadCustomerData(customer);
 }
+async function requestClose(bagId){const method=$('paymentPreference').value;if(!confirm('Enviar solicitação de fechamento?'))return;const {error}=await sb.rpc('customer_request_bag_close',{p_bag_id:bagId,p_payment_method:method});if(error){msg(error.message);return}msg('Solicitação enviada à Garimpeira.');await startPortal();}
 async function loadCustomerData(customer){
   const bags=await sb.from('bags').select('*').eq('customer_id',customer.id).order('created_at',{ascending:false});
   if(bags.error){$('currentBag').textContent=bags.error.message;return}
   const ids=bags.data.map(b=>b.id);
-  let items=[],payments=[],deliveries=[];
+  let items=[],payments=[],deliveries=[],requests=[];
   if(ids.length){
-    const [i,p,d]=await Promise.all([
+    const [i,p,d,cr]=await Promise.all([
       sb.from('bag_items').select('*').in('bag_id',ids).order('added_at',{ascending:true}),
       sb.from('payments').select('*').in('bag_id',ids).order('created_at',{ascending:false}),
-      sb.from('deliveries').select('*').in('bag_id',ids).order('created_at',{ascending:false})
+      sb.from('deliveries').select('*').in('bag_id',ids).order('created_at',{ascending:false}),
+      sb.from('bag_close_requests').select('*').in('bag_id',ids).order('requested_at',{ascending:false})
     ]);
-    if(i.error||p.error||d.error){$('currentBag').textContent=(i.error||p.error||d.error).message;return}
-    items=i.data;payments=p.data;deliveries=d.data;
+    if(i.error||p.error||d.error||cr.error){$('currentBag').textContent=(i.error||p.error||d.error||cr.error).message;return}
+    items=i.data;payments=p.data;deliveries=d.data;requests=cr.data;
   }
   const open=bags.data.filter(b=>b.status==='open');
   const openItems=items.filter(i=>open.some(b=>b.id===i.bag_id)&&i.status==='reserved');
@@ -108,7 +110,8 @@ async function loadCustomerData(customer){
       '<div class="line"><span>Subtotal</span><b>'+money(subtotal)+'</b></div>'+
       (discount?'<div class="line"><span>Desconto concedido pela Garimpeira</span><b>− '+money(discount)+'</b></div>':'')+
       '<div class="line"><b>Total atual</b><span class="total">'+money(total)+'</span></div>'+
-      '<p class="muted">Para fechar sua sacolinha ou combinar o pagamento, fale com a Garimpeira pelo WhatsApp.</p>';
+      '<p class="muted">Escolha como deseja pagar e solicite o fechamento. A Garimpeira confirmará sua sacolinha.</p>'+
+      (requests.some(r=>r.bag_id===bag.id&&r.status==='pending')?'<div class="note">Sua solicitação de fechamento já foi enviada. Aguarde a confirmação da Garimpeira.</div>':'<div class="row" style="margin-top:12px"><select id="paymentPreference"><option value="pix">Pix</option><option value="card">Cartão</option><option value="mixed">Pix + cartão</option></select><button onclick="requestClose(\''+bag.id+'\')">Solicitar fechamento</button></div>');
   }else $('currentBag').innerHTML='<div class="empty">Você não tem sacolinha aberta no momento.</div>';
   const closed=bags.data.filter(b=>b.status==='closed');
   $('history').innerHTML=closed.length?closed.map(b=>{
