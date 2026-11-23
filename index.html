@@ -81,7 +81,6 @@ table{width:100%;border-collapse:collapse;margin-top:12px;background:white}th,td
     <h3>Cadastro de clientes</h3><div class="formgrid">
       <div class="field"><label for="cName">Nome</label><input id="cName" placeholder="Nome da cliente"></div>
       <div class="field"><label for="cPhone">Telefone / WhatsApp</label><input id="cPhone" placeholder="DDD + número"></div>
-      <div class="field"><label for="cEmail">E-mail para acesso ao portal</label><input id="cEmail" type="email" placeholder="cliente@email.com"></div>
       <div class="field"><label for="cObs">Observações</label><input id="cObs" placeholder="Opcional"></div>
     </div><button onclick="addClient()">Salvar cliente</button><input style="margin-top:14px" id="clientSearch" placeholder="Buscar por nome ou telefone..." oninput="renderClients()"><div id="clientList"></div>
   </div></section>
@@ -164,7 +163,7 @@ async function loadCloud(){
     sb.from('bag_close_requests').select('*').eq('status','pending')
   ]);
   for(const r of [c,s,p,b,bi,cr]) if(r.error) throw r.error;
-  db.clients=c.data.map(x=>({id:x.id,name:x.name,phone:x.phone||'',email:x.email||'',obs:x.notes||''}));
+  db.clients=c.data.map(x=>({id:x.id,name:x.name,phone:x.phone||'',email:x.email||'',authUserId:x.auth_user_id||null,obs:x.notes||''}));
   db.suppliers=s.data.map(x=>({id:x.id,name:x.name,phone:x.phone||'',rule:x.settlement_rule||'',notes:x.notes||''}));
   db.products=p.data.map(x=>({id:x.id,desc:x.description,short:x.short_code||'',size:x.size||'',cost:Number(x.cost||0),price:Number(x.sale_price||0),supplierId:x.supplier_id, supplier:(s.data.find(y=>y.id===x.supplier_id)||{}).name||'',type:x.acquisition_type,barcode:x.barcode||'',status:x.status==='available'?'Disponível':x.status==='reserved'?'Reservada':x.status==='sold'?'Vendida':'Baixada'}));
   db.bags={};db.bagMeta={};db.closeRequests={};
@@ -179,11 +178,11 @@ async function loadCloud(){
   render();
 }
 async function addClient(){
-  const name=el('cName').value.trim(),phone=el('cPhone').value.trim(),email=el('cEmail').value.trim().toLowerCase();
+  const name=el('cName').value.trim(),phone=el('cPhone').value.trim();
   if(!name||!phone)return alert('Informe nome e telefone.');
-  const {data,error}=await sb.from('customers').insert({name,phone,email:email||null,notes:el('cObs').value.trim()||null}).select().single();
+  const {data,error}=await sb.from('customers').insert({name,phone,notes:el('cObs').value.trim()||null}).select().single();
   if(error)return reportError(error,'Não foi possível salvar a cliente.');
-  el('cName').value='';el('cPhone').value='';el('cEmail').value='';el('cObs').value='';
+  el('cName').value='';el('cPhone').value='';el('cObs').value='';
   await loadCloud();alert('Cliente salva no Supabase.');
 }
 async function addSupplier(){
@@ -249,7 +248,19 @@ function render(){
 function renderClients(){
   const q=(el('clientSearch').value||'').toLowerCase();
   el('clientList').innerHTML=db.clients.filter(c=>(c.name+' '+c.phone).toLowerCase().includes(q))
-    .map(c=>`<div class="statline"><span><b>${esc(c.name)}</b><br><small>${esc(c.phone)} • ${esc(c.email||'Sem e-mail para o portal')}</small></span><button class="secondary" onclick="setCustomerEmail('${c.id}')">${c.email?'Alterar e-mail':'Cadastrar e-mail do portal'}</button></div>`).join('')||'<div class="empty">Nenhuma cliente cadastrada.</div>';
+    .map(c=>`<div class="statline"><span><b>${esc(c.name)}</b><br><small>${esc(c.phone)} • ${c.authUserId?'Acesso ativo':'Sem acesso ao portal'}</small></span><button class="secondary" onclick="generateCustomerAccess('${c.id}')">${c.authUserId?'Gerar nova senha':'Gerar acesso'}</button></div>`).join('')||'<div class="empty">Nenhuma cliente cadastrada.</div>';
+}
+async function generateCustomerAccess(customerId){
+  const customer=db.clients.find(x=>x.id===customerId);if(!customer)return;
+  if(!customer.phone)return alert('Cadastre o celular da cliente primeiro.');
+  const action=customer.authUserId?'Gerar uma nova senha':'Criar acesso';
+  if(!confirm(action+' para '+customer.name+' usando o celular '+customer.phone+'?'))return;
+  const {data,error}=await sb.functions.invoke('admin-create-customer-login',{body:{customer_id:customerId}});
+  if(error)return reportError(error,'Não foi possível gerar o acesso da cliente.');
+  if(data?.error)return alert(data.error);
+  const text='GARIMPEIRA DE CABIDE\\nAcesso ao portal: https://garimpeiradecabide.github.io/garimpeira-pdv/portal.html\\nCelular: '+customer.phone+'\\nSenha: '+data.password+'\\n\\nGuarde esta senha em local seguro. No primeiro acesso, recomendamos trocar a senha.';
+  prompt('Acesso criado para '+customer.name+'. Copie e envie a senha em particular pelo WhatsApp. Ela só será exibida agora:',text);
+  await loadCloud();
 }
 async function setCustomerEmail(customerId){const customer=db.clients.find(x=>x.id===customerId);if(!customer)return;const email=prompt('E-mail que a cliente usará para criar o acesso ao portal:',customer.email||'');if(email===null)return;const normalized=email.trim().toLowerCase();if(normalized&&(!normalized.includes('@')||!normalized.split('@')[1]?.includes('.')))return alert('Informe um e-mail válido.');const {error}=await sb.from('customers').update({email:normalized||null}).eq('id',customerId);if(error)return reportError(error,'Não foi possível atualizar o e-mail.');await loadCloud();alert('E-mail do portal atualizado. Oriente a cliente a criar o acesso em portal.html.');}
 function renderSuppliers(){
