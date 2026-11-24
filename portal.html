@@ -172,10 +172,17 @@ async function loadCustomerData(customer){
   const deliveryLabels={requested_moto:'Solicitação de moto entrega enviada',requested_shipping:'Solicitação de simulação de frete enviada',accepted:'Solicitação aceita • aguarde nosso contato',preparing:'Em preparação',shipped:'Enviado / em rota',delivered:'Entregue',pending:'Aguardando'};
   const deliveryForBag=deliveryBagId?deliveries.find(d=>d.bag_id===deliveryBagId):null;
   const existingRequest=!!deliveryForBag;
+  const notifyKind=deliveryForBag?.status==='requested_shipping'?'shipping':'moto';
   $('deliveryActions').innerHTML=deliveryBagId&&!existingRequest
-    ? '<p class="muted">Escolha como deseja receber sua compra:</p><div class="row"><button type="button" onclick="requestDelivery(\\'moto\\')">Solicitar moto entrega (Bragança Paulista)</button><button type="button" class="secondary" onclick="requestDelivery(\\'shipping\\')">Solicitar simulação de frete (outras cidades)</button></div>'
+    ? '<p class="muted">Escolha como deseja receber sua compra:</p><div class="row"><button type="button" id="requestMotoBtn">Solicitar moto entrega (Bragança Paulista)</button><button type="button" class="secondary" id="requestShippingBtn">Solicitar simulação de frete (outras cidades)</button></div>'
     : deliveryForBag?.status==='delivered'?'<p class="muted">Sua entrega foi concluída. Obrigada por comprar com a Garimpeira! 🤍</p>'
-    : deliveryBagId&&existingRequest?'<p class="muted">Sua solicitação desta compra já foi registrada. Para avisar a Garimpeira, toque abaixo e escolha o WhatsApp Business, se o celular perguntar qual aplicativo usar.</p><button type="button" onclick="notifyGarimpeira(\\''+(deliveryForBag.status==='requested_shipping'?'shipping':'moto')+'\\')">Avisar a Garimpeira pelo WhatsApp</button>':'<p class="muted">As opções de entrega ficam disponíveis após a finalização da compra.</p>';
+    : deliveryBagId&&existingRequest?'<p class="muted">Sua solicitação desta compra já foi registrada. Para avisar a Garimpeira, toque abaixo e escolha o WhatsApp Business, se o celular perguntar qual aplicativo usar.</p><button type="button" id="notifyDeliveryBtn">Avisar a Garimpeira pelo WhatsApp</button>':'<p class="muted">As opções de entrega ficam disponíveis após a finalização da compra.</p>';
+  const requestMotoBtn=$('requestMotoBtn');
+  if(requestMotoBtn)requestMotoBtn.addEventListener('click',()=>requestDelivery('moto'));
+  const requestShippingBtn=$('requestShippingBtn');
+  if(requestShippingBtn)requestShippingBtn.addEventListener('click',()=>requestDelivery('shipping'));
+  const notifyDeliveryBtn=$('notifyDeliveryBtn');
+  if(notifyDeliveryBtn)notifyDeliveryBtn.addEventListener('click',()=>notifyGarimpeira(notifyKind));
   $('deliveries').innerHTML=deliveries.length?deliveries.map(d=>'<div class="line"><span><b>'+esc(deliveryLabels[d.status]||d.status)+'</b><br><small class="muted">'+esc(d.address||'A combinar pelo WhatsApp')+(d.tracking_code?' • Rastreio: '+esc(d.tracking_code):'')+'</small></span>'+(Number(d.shipping_cost||0)>0?'<b>'+money(d.shipping_cost)+'</b>':'')+'</div>').join(''):'<div class="empty">Nenhuma solicitação cadastrada.</div>';
 }
 (async()=>{const {data:{session}}=await sb.auth.getSession();if(session)await startPortal()})();
