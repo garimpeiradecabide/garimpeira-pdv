@@ -32,6 +32,7 @@ table{width:100%;border-collapse:collapse;margin-top:12px;background:white}th,td
 #cameraScanner{display:none;position:fixed;inset:0;background:#0009;z-index:20;align-items:center;justify-content:center;padding:16px}#cameraScanner .camera-card{background:#fff;border-radius:16px;padding:16px;width:min(100%,480px)}#reader{width:100%;overflow:hidden}
 @media(max-width:760px){.grid{grid-template-columns:repeat(2,1fr)}.formgrid{grid-template-columns:1fr 1fr}header{padding:12px}.top h1{font-size:21px}}
 @media(max-width:450px){.formgrid{grid-template-columns:1fr}.grid{gap:8px}.card{padding:13px}}
+.delivery-done{display:inline-block;background:#dff3e3;color:#176b35;border:1px solid #8ed2a0;border-radius:999px;padding:7px 13px;font-weight:800;font-size:14px}
 </style>
 </head>
 <body>
@@ -622,16 +623,21 @@ function renderDeliveryRequests(){
     const phone=String(customer?.phone||'').replaceAll('(','').replaceAll(')','').replaceAll('-','').replaceAll(' ','');
     const chat=phone?"<a target='_blank' rel='noopener' href='https://wa.me/55"+phone+"'>Conversar no WhatsApp</a>":'';
     const date=d.created_at?new Date(d.created_at).toLocaleString('pt-BR'):'';
+    const deliveredDate=d.delivered_at?new Date(d.delivered_at).toLocaleDateString('pt-BR'):'';
     let action='';
     if(d.status==='requested_moto'||d.status==='requested_shipping')action="<button onclick='updateDeliveryRequest(&quot;"+d.id+"&quot;,&quot;accepted&quot;)'>Aceitar solicitação</button>";
     else if(d.status==='accepted')action="<button class='secondary' onclick='updateDeliveryRequest(&quot;"+d.id+"&quot;,&quot;delivered&quot;)'>Marcar como entregue</button>";
-    return "<div class='card' style='margin:12px 0'><div class='row between'><div><b>"+esc(customer?.name||'Cliente não identificada')+"</b><br><small class='small-muted'>"+esc(customer?.phone||'Telefone não cadastrado')+" • "+date+"</small></div><span class='pill'>"+esc(labels[d.status]||d.status)+"</span></div><p>"+esc(d.status==='requested_moto'?'A cliente quer combinar uma entrega por moto.':d.status==='requested_shipping'?'A cliente pediu uma simulação de frete.':'Solicitação registrada no portal.')+"</p><div class='row'>"+chat+action+"</div></div>";
+    const statusBadge=d.status==='delivered'
+      ? "<span class=\"delivery-done\">✓ Entregue • "+esc(deliveredDate||'Data não registrada')+"</span>"
+      : "<span class='pill'>"+esc(labels[d.status]||d.status)+"</span>";
+    return "<div class='card' style='margin:12px 0'><div class='row between'><div><b>"+esc(customer?.name||'Cliente não identificada')+"</b><br><small class='small-muted'>"+esc(customer?.phone||'Telefone não cadastrado')+" • "+date+"</small></div>"+statusBadge+"</div><p>"+esc(d.status==='requested_moto'?'A cliente quer combinar uma entrega por moto.':d.status==='requested_shipping'?'A cliente pediu uma simulação de frete.':'Solicitação registrada no portal.')+"</p><div class='row'>"+chat+action+"</div></div>";
   }).join(''):'<div class="empty">Nenhuma solicitação de entrega no momento.</div>';
 }
 async function updateDeliveryRequest(id,status){
   const label=status==='accepted'?'aceitar esta solicitação':'marcar esta entrega como concluída';
   if(!confirm('Deseja '+label+'?'))return;
-  const {error}=await sb.from('deliveries').update({status}).eq('id',id);
+  const changes=status==='delivered'?{status,delivered_at:new Date().toISOString()}:{status};
+  const {error}=await sb.from('deliveries').update(changes).eq('id',id);
   if(error){alert('Não foi possível atualizar: '+error.message);return}
   await loadCloud();render();
 }
