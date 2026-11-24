@@ -68,6 +68,7 @@ table{width:100%;border-collapse:collapse;margin-top:12px;background:white}th,td
     <button data-tab="suppliers" onclick="show('suppliers')">Fornecedoras</button>
     <button data-tab="stock" onclick="show('stock')">Estoque</button>
     <button data-tab="bags" onclick="show('bags')">Sacolinhas</button>
+    <button data-tab="sales" onclick="show('sales')">Vendas concluídas</button>
     <button data-tab="payments" onclick="show('payments')">Pagamentos</button>
   </div>
   <section id="home" class="panel active">
@@ -117,6 +118,7 @@ table{width:100%;border-collapse:collapse;margin-top:12px;background:white}th,td
     <div id="cart"></div><div class="note">Cada peça reservada é registrada no banco e fica vinculada à sacolinha da cliente.</div>
   </div></section>
   <section id="bags" class="panel"><div class="card"><h3>Solicitações de fechamento</h3><p class="sub">Pedidos enviados pelas clientes, aguardando conferência da Garimpeira.</p><div id="closeRequestList"></div></div><div class="card"><h3>Sacolinhas permanentes</h3><div id="bagList"></div></div></section>
+  <section id="sales" class="panel"><div class="card"><h3>Histórico de vendas concluídas</h3><p class="sub">Consulte compras finalizadas, peças, valores e pagamentos registrados. O histórico permanece aqui mesmo depois que a sacolinha sai da tela de vendas ao vivo.</p><input id="salesSearch" placeholder="Buscar por cliente ou telefone..." oninput="renderSales()"><div id="salesList"></div></div></section>
   <section id="payments" class="panel"><div class="card"><h3>Configurações de recebimento e taxas</h3><p class="sub">Altere a chave aqui quando ela voltar do PicPay para o Mercado Pago. A mudança será refletida no portal das clientes.</p><div class="formgrid">
     <div class="field"><label for="pixKey">Chave Pix manual</label><input id="pixKey" placeholder="Chave Pix atual"></div>
     <div class="field"><label for="pixKeyType">Tipo de chave</label><select id="pixKeyType"><option value="celular">Celular</option><option value="cpf">CPF</option><option value="cnpj">CNPJ</option><option value="email">E-mail</option><option value="aleatoria">Aleatória</option></select></div>
@@ -132,7 +134,7 @@ table{width:100%;border-collapse:collapse;margin-top:12px;background:white}th,td
 const SUPABASE_URL = 'https://gcyuvbakxswkjcyqscth.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_haoKT8vSzAEpxwfsapBM1A_4REUsg8T';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-let db = {clients:[], suppliers:[], products:[], bags:{}, bagMeta:{}, closeRequests:{}, paymentSettings:null, payments:[]};
+let db = {clients:[], suppliers:[], products:[], bags:{}, bagMeta:{}, closeRequests:{}, paymentSettings:null, payments:[], sales:[]};
 let currentUser = null;
 let cameraScanner = null;
 let cameraTarget = null;
@@ -158,7 +160,7 @@ async function login(email,password){
   setStatus('Conectado ao Supabase',true);
 }
 async function logout(){
-  await sb.auth.signOut();currentUser=null;db={clients:[],suppliers:[],products:[],bags:{},bagMeta:{},closeRequests:{}};
+  await sb.auth.signOut();currentUser=null;db={clients:[],suppliers:[],products:[],bags:{},bagMeta:{},closeRequests:{},sales:[],payments:[]};
   el('app').style.display='none';el('loginScreen').style.display='block';el('logoutBtn').style.display='none';
   setStatus('Sessão encerrada');
 }
@@ -168,7 +170,7 @@ el('loginForm').addEventListener('submit',async e=>{
   catch(err){console.error(err);el('loginMessage').textContent='Não foi possível entrar: '+(err.message||'verifique e-mail e senha');}
 });
 async function loadCloud(){
-  const [c,s,p,b,bi,cr,ps,pay]=await Promise.all([
+  const [c,s,p,b,bi,cr,ps,pay,closedBags,soldItems]=await Promise.all([
     sb.from('customers').select('*').order('created_at',{ascending:false}),
     sb.from('suppliers').select('*').eq('active',true).order('name'),
     sb.from('products').select('*').order('created_at',{ascending:false}),
@@ -176,13 +178,21 @@ async function loadCloud(){
     sb.from('bag_items').select('*').eq('status','reserved').order('added_at',{ascending:true}),
     sb.from('bag_close_requests').select('*').eq('status','pending'),
     sb.from('payment_settings').select('*').eq('singleton',true).maybeSingle(),
-    sb.from('payments').select('*').order('created_at',{ascending:false})
+    sb.from('payments').select('*').order('created_at',{ascending:false}),
+    sb.from('bags').select('*').eq('status','closed').order('closed_at',{ascending:false}),
+    sb.from('bag_items').select('*').eq('status','sold').order('added_at',{ascending:true})
   ]);
-  for(const r of [c,s,p,b,bi,cr,ps,pay]) if(r.error) throw r.error;
+  for(const r of [c,s,p,b,bi,cr,ps,pay,closedBags,soldItems]) if(r.error) throw r.error;
   db.clients=c.data.map(x=>({id:x.id,name:x.name,phone:x.phone||'',email:x.email||'',authUserId:x.auth_user_id||null,obs:x.notes||''}));
   db.suppliers=s.data.map(x=>({id:x.id,name:x.name,phone:x.phone||'',rule:x.settlement_rule||'',notes:x.notes||''}));
   db.products=p.data.map(x=>({id:x.id,desc:x.description,short:x.short_code||'',size:x.size||'',cost:Number(x.cost||0),price:Number(x.sale_price||0),supplierId:x.supplier_id,supplier:(s.data.find(y=>y.id===x.supplier_id)||{}).name||'',type:x.acquisition_type,barcode:x.barcode||'',status:x.status==='available'?'Disponível':x.status==='reserved'?'Reservada':x.status==='sold'?'Vendida':'Baixada'}));
   db.bags={};db.bagMeta={};db.closeRequests={};db.paymentSettings=ps.data;db.payments=pay.data||[];
+  db.sales=(closedBags.data||[]).map(bag=>({
+    id:bag.id,customerId:bag.customer_id,closedAt:bag.closed_at,createdAt:bag.created_at,
+    discount:Number(bag.discount_amount||0),items:(soldItems.data||[]).filter(item=>item.bag_id===bag.id).map(item=>({
+      description:item.description_snapshot||'Peça',size:item.size_snapshot||'',price:Number(item.price_snapshot||0),status:item.status
+    }))
+  })).filter(sale=>sale.items.length>0);
   if(ps.data){el('pixKey').value=ps.data.pix_key||'';el('pixKeyType').value=ps.data.pix_key_type||'celular';el('pixProvider').value=ps.data.pix_provider||'';el('pixReceiver').value=ps.data.pix_receiver||'';el('pixFeePercent').value=ps.data.pix_fee_percent??'0.99';el('cardFeePercent').value=ps.data.card_fee_percent??'';}
   const bagById=new Map(b.data.map(x=>[x.id,x]));
   for(const bag of b.data){
@@ -325,7 +335,7 @@ function render(){
   el('mClients').textContent=db.clients.length;el('mProducts').textContent=db.products.length;
   el('mAvailable').textContent=db.products.filter(p=>p.status==='Disponível').length;
   el('mBags').textContent=Object.values(db.bags).filter(a=>a.length).length;
-  renderClients();renderSuppliers();renderProducts();renderStock();renderSelectors();renderCart();renderBags();renderCloseRequests();
+  renderClients();renderSuppliers();renderProducts();renderStock();renderSelectors();renderCart();renderBags();renderCloseRequests();renderSales();
 }
 function renderClients(){
   const q=(el('clientSearch').value||'').toLowerCase();
@@ -596,6 +606,30 @@ async function openCloseRequest(bagId){
   const method=req.payment_method==='pix'?'PIX':req.payment_method==='card'?'CARTÃO':'PIX + CARTÃO';
   alert('Solicitação de '+(customer?.name||'cliente')+'\nForma escolhida: '+method+'\nPeças reservadas: '+items.length+'\n\nConfira os itens e o pagamento antes de fechar. A confirmação final deve ser feita em Venda ao vivo, no botão de fechar sacolinha.');
   if(cid){el('liveClient').value=cid;show('live');}
+}
+function renderSales(){
+  const query=(el('salesSearch')?.value||'').trim().toLocaleLowerCase('pt-BR');
+  const rows=(db.sales||[]).filter(sale=>{
+    const customer=db.clients.find(c=>c.id===sale.customerId);
+    return !query||String(customer?.name||'').toLocaleLowerCase('pt-BR').includes(query)||String(customer?.phone||'').includes(query);
+  }).map(sale=>{
+    const customer=db.clients.find(c=>c.id===sale.customerId);
+    const subtotal=sale.items.reduce((sum,item)=>sum+item.price,0);
+    const total=Math.max(0,subtotal-sale.discount);
+    const payments=(db.payments||[]).filter(p=>p.bag_id===sale.id).sort((a,b)=>new Date(a.created_at||0)-new Date(b.created_at||0));
+    const paymentLabels={paid:'Pago e aprovado',pending:'Pendente',failed:'Não aprovado',cancelled:'Cancelado',refunded:'Estornado'};
+    const methodLabels={pix:'Pix',card:'Cartão',cash:'Dinheiro',manual:'Registro manual'};
+    const paymentHtml=payments.map(p=>{
+      const synthetic=p.provider_reference==='SYNTHETIC_TEST_FIXTURE_NOT_A_REAL_PAYMENT';
+      const status=p.superseded_at&&p.status==='pending'?'Link substituído':p.superseded_at&&p.status==='paid'?'Link antigo pago — conferir':synthetic?'Simulação de teste — não recebido':(paymentLabels[p.status]||p.status);
+      const date=p.paid_at||p.created_at;
+      return '<div class="statline"><span>'+esc(methodLabels[p.method]||p.method||'Pagamento')+' • '+esc(p.purpose==='first_item'?'Primeira peça':p.purpose==='bag_balance'?'Saldo':'Pagamento')+'<br><small>'+(date?new Date(date).toLocaleString('pt-BR'):'Data não informada')+'</small></span><span style="text-align:right"><b>'+money(p.amount)+'</b><br><small>'+esc(status)+'</small></span></div>';
+    }).join('')||'<div class="empty">Nenhum pagamento vinculado a esta venda.</div>';
+    const itemHtml=sale.items.map(item=>'<div class="statline"><span>'+esc(item.description)+'<br><small>'+esc(item.size||'Tamanho não informado')+'</small></span><b>'+money(item.price)+'</b></div>').join('');
+    const closed=sale.closedAt?new Date(sale.closedAt).toLocaleString('pt-BR'):'Data não informada';
+    return '<details class="card" style="margin:12px 0"><summary style="cursor:pointer"><b>'+esc(customer?.name||'Cliente não identificada')+'</b><br><small>'+closed+' • '+sale.items.length+' peça(s)</small><br><b>'+money(total)+'</b></summary><div style="margin-top:12px"><b>Nota da compra</b>'+itemHtml+'<div class="statline"><span>Subtotal</span><b>'+money(subtotal)+'</b></div>'+(sale.discount>0?'<div class="statline"><span>Desconto</span><b>− '+money(sale.discount)+'</b></div>':'')+'<div class="statline"><b>Total da venda</b><b>'+money(total)+'</b></div><h4>Histórico de pagamentos</h4>'+paymentHtml+'</div></details>';
+  }).join('');
+  el('salesList').innerHTML=rows||'<div class="empty">Nenhuma venda concluída encontrada.</div>';
 }
 function renderCloseRequests(){
   const pending=Object.values(db.closeRequests||{}).filter(r=>r.status==='pending').sort((a,b)=>new Date(b.requested_at)-new Date(a.requested_at));
