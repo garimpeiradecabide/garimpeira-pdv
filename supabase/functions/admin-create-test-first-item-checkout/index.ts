@@ -46,7 +46,8 @@ Deno.serve(async (req) => {
     return reply({ error: "Informe a sacolinha de teste e escolha Pix ou cartão." }, 400);
   }
 
-  const { data: prepared, error: prepareError } = await userClient.rpc("admin_prepare_test_first_item_payment", {
+  const admin = createClient(url, service, { auth: { persistSession: false, autoRefreshToken: false } });
+  const { data: prepared, error: prepareError } = await admin.rpc("admin_prepare_test_first_item_payment", {
     p_bag_id: body.bag_id,
     p_method: body.method,
   });
@@ -56,7 +57,6 @@ Deno.serve(async (req) => {
     return reply({ error: "O banco não retornou os dados da cobrança de teste." }, 500);
   }
 
-  const admin = createClient(url, service, { auth: { persistSession: false, autoRefreshToken: false } });
   const { data: settings } = await admin.from("payment_settings")
     .select("card_max_installments").eq("singleton", true).maybeSingle();
   const installments = body.method === "card" ? Math.max(1, Math.min(36, Number(settings?.card_max_installments || 1))) : 1;
