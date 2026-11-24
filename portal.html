@@ -109,7 +109,6 @@ async function loadCustomerData(customer){
   if(open.length){
     const bag=open[0],list=openItems.filter(i=>i.bag_id===bag.id);
     const subtotal=list.reduce((s,i)=>s+Number(i.price_snapshot||0),0),discount=Number(bag.discount_amount||0),total=Math.max(0,subtotal-discount);
-    currentBagTotal=total;
     const firstPayment=payments.find(p=>p.bag_id===bag.id&&p.purpose==='first_item');
     const paidFirst=firstPayment?.status==='paid';
     const firstCredit=paidFirst?Number(firstPayment.base_amount||0):0;
