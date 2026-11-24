@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Garimpeira PDV</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <style>
 :root{--green:#52634b;--green2:#e9eee5;--ink:#263027;--muted:#748071;--line:#e4e8e1;--cream:#f7f7f2;--gold:#b39a65}
 *{box-sizing:border-box}body{margin:0;background:var(--cream);color:var(--ink);font:15px/1.45 Inter,system-ui,Arial}
@@ -28,6 +29,7 @@ table{width:100%;border-collapse:collapse;margin-top:12px;background:white}th,td
 .statline{display:flex;justify-content:space-between;gap:12px;align-items:center;border-bottom:1px solid var(--line);padding:8px 0}.small-muted{font-size:12px;color:var(--muted)}
 #loginScreen{max-width:430px;margin:8vh auto;padding:0 18px}#loginScreen .card{padding:24px}#app{display:none}
 .status{font-size:12px;color:var(--muted)}.status.ok{color:#426b3d}.status.err{color:#a34e42}
+#cameraScanner{display:none;position:fixed;inset:0;background:#0009;z-index:20;align-items:center;justify-content:center;padding:16px}#cameraScanner .camera-card{background:#fff;border-radius:16px;padding:16px;width:min(100%,480px)}#reader{width:100%;overflow:hidden}
 @media(max-width:760px){.grid{grid-template-columns:repeat(2,1fr)}.formgrid{grid-template-columns:1fr 1fr}header{padding:12px}.top h1{font-size:21px}}
 @media(max-width:450px){.formgrid{grid-template-columns:1fr}.grid{gap:8px}.card{padding:13px}}
 </style>
@@ -101,14 +103,14 @@ table{width:100%;border-collapse:collapse;margin-top:12px;background:white}th,td
       <div class="field"><label for="pPrice">Valor de venda</label><input id="pPrice" type="number" min="0" step=".01" placeholder="0,00"></div>
       <div class="field"><label for="pSupplier">Fornecedora</label><select id="pSupplier"></select></div>
       <div class="field"><label for="pType">Modalidade de entrada</label><select id="pType"><option value="purchase">Compra</option><option value="consignment">Consignação</option></select></div>
-      <div class="field"><label for="pBarcode">Código da sua etiqueta (bipe aqui ou digite os 6 números)</label><input id="pBarcode" inputmode="numeric" placeholder="Ex.: 123456 — vazio gera um código"></div>
+      <div class="field"><label for="pBarcode">Código de barras da sua etiqueta (6 números)</label><input id="pBarcode" inputmode="numeric" maxlength="6" placeholder="Leia com a câmera ou digite os 6 números"><button type="button" class="secondary" style="margin-top:6px;width:100%" onclick="openCameraScan('product')">📷 Ler etiqueta com a câmera</button></div>
     </div><button onclick="addProduct()">Salvar produto e gerar etiqueta</button><div id="productList"></div>
   </div></section>
   <section id="stock" class="panel"><div class="card"><h3>Estoque e movimentações</h3><div id="stockList"></div></div></section>
   <section id="live" class="panel"><div class="card">
     <h3>Frente de caixa • venda ao vivo</h3><div class="formgrid">
       <div class="field"><label for="liveClient">Cliente selecionada</label><select id="liveClient" onchange="renderCart()"></select></div>
-      <div class="field"><label for="scan">Leitor / código de barras</label><input id="scan" placeholder="Bipe o código e pressione Enter" onkeydown="if(event.key==='Enter'){event.preventDefault();scanProduct()}"></div>
+      <div class="field"><label for="scan">Código de barras da peça</label><input id="scan" inputmode="numeric" placeholder="Leia com a câmera ou digite o código" onkeydown="if(event.key==='Enter'){event.preventDefault();scanProduct()}"><button type="button" class="secondary" style="margin-top:6px;width:100%" onclick="openCameraScan('live')">📷 Bipar com a câmera do celular</button></div>
       <div class="field"><label for="shortScan">Ou código curto da live</label><input id="shortScan" placeholder="Ex.: 025" onkeydown="if(event.key==='Enter'){event.preventDefault();scanShort()}"></div>
       <div class="field"><label for="liveSearch">Pesquisar peça pelo nome, tamanho, código de live ou barras</label><input id="liveSearch" placeholder="Digite parte da descrição ou um código..." oninput="searchLiveProducts()"></div>
     </div><div id="liveSearchResults"></div><div class="row"><button onclick="scanProduct()">Adicionar código</button><button class="secondary" onclick="scanShort()">Adicionar código curto</button><button class="secondary" onclick="show('clients')">Cadastrar cliente</button></div>
@@ -123,6 +125,7 @@ table{width:100%;border-collapse:collapse;margin-top:12px;background:white}th,td
   </div><button onclick="savePaymentSettings()">Salvar configurações de recebimento</button><span id="pixSettingsStatus" class="small-muted"></span><p class="small-muted">Informe a taxa de processamento do Checkout Pro / link online com recebimento imediato (D0), não a taxa da maquininha física. Na primeira peça, o Mercado Pago confirma Pix ou cartão automaticamente e permite até 18 parcelas, conforme as condições da sua conta. Os juros do parcelamento são repassados pelo próprio Mercado Pago à compradora. No saldo restante, o sistema gera cobrança Pix; cartão é registrado manualmente somente após você conferir o recebimento do link externo.</p></div><div class="card"><h3>Conferência de pagamentos</h3><p class="sub">A primeira peça será confirmada automaticamente pelo Mercado Pago. O saldo por Pix também terá confirmação automática. Pagamentos de saldo por cartão, feitos em link externo, serão registrados manualmente pela administração após conferência.</p></div></section>
 </main>
 </div>
+<div id="cameraScanner"><div class="camera-card"><div class="row between"><b>Leia o código de barras da peça</b><button type="button" class="secondary" onclick="closeCameraScan()">Fechar</button></div><p class="small-muted">Aponte a câmera para a etiqueta Code 128.</p><div id="reader"></div><p id="cameraMessage" class="small-muted">Aguardando a câmera…</p></div></div>
 
 <script>
 'use strict';
@@ -131,6 +134,8 @@ const SUPABASE_KEY = 'sb_publishable_haoKT8vSzAEpxwfsapBM1A_4REUsg8T';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let db = {clients:[], suppliers:[], products:[], bags:{}, bagMeta:{}, closeRequests:{}, paymentSettings:null, payments:[]};
 let currentUser = null;
+let cameraScanner = null;
+let cameraTarget = null;
 const el = id => document.getElementById(id);
 const money = n => Number(n || 0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 const esc = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -226,7 +231,9 @@ async function addSupplier(){
 async function addProduct(){
   const desc=el('pDesc').value.trim(),price=Number(el('pPrice').value),cost=Number(el('pCost').value||0);
   if(!desc||!el('pPrice').value||price<=0||cost<0)return alert('Informe descrição e preço de venda válido.');
-  const barcode=el('pBarcode').value.trim()||('200'+String(Date.now()).slice(-10));
+  const barcode=el('pBarcode').value.trim();
+  if(!/^\d{6}$/.test(barcode))return alert('Leia a etiqueta com a câmera ou informe os 6 números do código de barras do Open Label.');
+  if(db.products.some(p=>p.barcode===barcode))return alert('Este código de barras já está cadastrado em outra peça. Cada etiqueta precisa ter um código exclusivo.');
   const short=el('pShort').value.trim()||String(Date.now()).slice(-3);
   const supplierId=el('pSupplier').value||null;
   const payload={description:desc,short_code:short,size:el('pSize').value.trim()||null,cost,sale_price:price,supplier_id:supplierId,acquisition_type:el('pType').value,barcode,status:'available'};
@@ -246,6 +253,25 @@ async function addToBag(product){
     if(error)throw error;
     await loadCloud();el('scan').focus();
   }catch(err){reportError(err,'Não foi possível reservar esta peça.');}
+}
+async function openCameraScan(target){
+  if(!window.Html5Qrcode){alert('Não foi possível carregar o leitor da câmera. Verifique sua conexão e tente novamente.');return;}
+  cameraTarget=target;el('cameraScanner').style.display='flex';el('cameraMessage').textContent='Solicitando acesso à câmera…';
+  try{
+    cameraScanner=new Html5Qrcode('reader',{formatsToSupport:[Html5QrcodeSupportedFormats.CODE_128],verbose:false});
+    await cameraScanner.start({facingMode:'environment'},{fps:12,qrbox:{width:280,height:130}},async decodedText=>{
+      const code=String(decodedText||'').trim();
+      const targetNow=cameraTarget;
+      await closeCameraScan();
+      if(targetNow==='product'){el('pBarcode').value=code;el('pBarcode').focus();}
+      else {el('scan').value=code;await scanProduct();}
+    },()=>{});
+    el('cameraMessage').textContent='Câmera ativa. Aponte para o código de barras.';
+  }catch(err){el('cameraMessage').textContent='Não foi possível abrir a câmera: '+(err.message||err);}
+}
+async function closeCameraScan(){
+  if(cameraScanner){try{if(cameraScanner.isScanning)await cameraScanner.stop();await cameraScanner.clear();}catch(e){}cameraScanner=null;}
+  el('cameraScanner').style.display='none';
 }
 async function scanProduct(){
   const code=el('scan').value.trim();el('scan').value='';
