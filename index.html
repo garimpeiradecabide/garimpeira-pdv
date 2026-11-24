@@ -101,7 +101,7 @@ table{width:100%;border-collapse:collapse;margin-top:12px;background:white}th,td
       <div class="field"><label for="pPrice">Valor de venda</label><input id="pPrice" type="number" min="0" step=".01" placeholder="0,00"></div>
       <div class="field"><label for="pSupplier">Fornecedora</label><select id="pSupplier"></select></div>
       <div class="field"><label for="pType">Modalidade de entrada</label><select id="pType"><option value="purchase">Compra</option><option value="consignment">Consignação</option></select></div>
-      <div class="field"><label for="pBarcode">Código de barras (vazio = gerar)</label><input id="pBarcode" placeholder="Gerado automaticamente"></div>
+      <div class="field"><label for="pBarcode">Código da sua etiqueta (bipe aqui ou digite os 6 números)</label><input id="pBarcode" inputmode="numeric" placeholder="Ex.: 123456 — vazio gera um código"></div>
     </div><button onclick="addProduct()">Salvar produto e gerar etiqueta</button><div id="productList"></div>
   </div></section>
   <section id="stock" class="panel"><div class="card"><h3>Estoque e movimentações</h3><div id="stockList"></div></div></section>
@@ -142,6 +142,7 @@ function show(tab){
   document.querySelectorAll('.panel').forEach(x=>x.classList.toggle('active',x.id===tab));
   document.querySelectorAll('.nav button').forEach(x=>x.classList.toggle('active',x.dataset.tab===tab));
   render();
+  if(tab==='live')el('scan').focus();
 }
 async function login(email,password){
   const {data,error}=await sb.auth.signInWithPassword({email,password});
