@@ -52,15 +52,24 @@ const money=n=>Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'B
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function msg(t){$('message').textContent=t}
 function normalizePhone(value){let d=String(value||'').replace(/\D/g,'');if(d.startsWith('55')&&(d.length===12||d.length===13))d=d.slice(2);if(d.length!==10&&d.length!==11)return null;return d}
-$('loginBtn').onclick=async()=>{
+$('loginBtn').addEventListener('click',async()=>{
+  const button=$('loginBtn');
   const phone=normalizePhone($('phone').value),password=$('password').value;
   if(!phone){msg('Informe o celular com DDD cadastrado na Garimpeira.');return}
   if(!password){msg('Informe sua senha.');return}
-  msg('Entrando…');
-  const {error}=await sb.auth.signInWithPassword({email:'c'+phone+'@login.garimpeiradecabide.com',password});
-  if(error){msg('Não foi possível entrar. Confira o celular e a senha ou fale com a Garimpeira para receber uma nova senha.');return}
-  await startPortal();
-};
+  button.disabled=true;button.textContent='Entrando…';msg('Conectando ao portal…');
+  try{
+    const {data,error}=await sb.auth.signInWithPassword({email:'c'+phone+'@login.garimpeiradecabide.com',password});
+    if(error){msg('Falha no acesso: '+error.message);return}
+    if(!data?.user){msg('O Supabase não confirmou o usuário. Tente novamente.');return}
+    msg('Acesso confirmado. Carregando sua sacolinha…');
+    await startPortal();
+  }catch(error){
+    msg('Erro ao conectar: '+(error?.message||String(error)));
+  }finally{
+    button.disabled=false;button.textContent='Entrar';
+  }
+});
 $('changePasswordBtn').onclick=async()=>{const p=$('newPassword').value,q=$('confirmPassword').value;if(p.length<10){$('passwordMessage').textContent='Use pelo menos 10 caracteres.';return}if(p!==q){$('passwordMessage').textContent='As senhas não conferem.';return}const {error}=await sb.auth.updateUser({password:p});$('passwordMessage').textContent=error?'Não foi possível alterar a senha: '+error.message:'Senha alterada com sucesso.';if(!error){$('newPassword').value='';$('confirmPassword').value=''}};
 $('logoutBtn').onclick=async()=>{await sb.auth.signOut();$('portal').classList.add('hidden');$('auth').classList.remove('hidden')};
 async function startPortal(){
