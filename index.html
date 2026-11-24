@@ -187,9 +187,11 @@ async function loadCloud(){
   db.suppliers=s.data.map(x=>({id:x.id,name:x.name,phone:x.phone||'',rule:x.settlement_rule||'',notes:x.notes||''}));
   db.products=p.data.map(x=>({id:x.id,desc:x.description,short:x.short_code||'',size:x.size||'',cost:Number(x.cost||0),price:Number(x.sale_price||0),supplierId:x.supplier_id,supplier:(s.data.find(y=>y.id===x.supplier_id)||{}).name||'',type:x.acquisition_type,barcode:x.barcode||'',status:x.status==='available'?'Disponível':x.status==='reserved'?'Reservada':x.status==='sold'?'Vendida':'Baixada'}));
   db.bags={};db.bagMeta={};db.closeRequests={};db.paymentSettings=ps.data;db.payments=pay.data||[];
-  db.sales=(closedBags.data||[]).map(bag=>({
+  const allClosedBags=(closedBags.data||[]).filter(bag=>bag.status==='closed');
+  const allSoldItems=(soldItems.data||[]).filter(item=>item.status==='sold');
+  db.sales=allClosedBags.map(bag=>({
     id:bag.id,customerId:bag.customer_id,closedAt:bag.closed_at,createdAt:bag.created_at,
-    discount:Number(bag.discount_amount||0),items:(soldItems.data||[]).filter(item=>item.bag_id===bag.id).map(item=>({
+    discount:Number(bag.discount_amount||0),items:allSoldItems.filter(item=>item.bag_id===bag.id).map(item=>({
       description:item.description_snapshot||'Peça',size:item.size_snapshot||'',price:Number(item.price_snapshot||0),status:item.status
     }))
   })).filter(sale=>sale.items.length>0);
