@@ -661,7 +661,15 @@ async function deleteProduct(productId){
   const {data:linkedItems,error:checkError}=await sb.from('bag_items').select('id,status').eq('product_id',productId).limit(1);
   if(checkError)return reportError(checkError,'Não foi possível verificar o histórico deste produto.');
   if(linkedItems?.length)return alert('Este produto já está vinculado a uma sacolinha ou venda. Para preservar o histórico, ele não pode ser excluído.');
-  if(!confirm('Excluir definitivamente "'+product.desc+'"? Ele será removido do cadastro de produtos e deixará de ficar vinculado à fornecedora. Esta ação não pode ser desfeita.'))return;
+  if(product.supplierLotId){
+    if(!confirm('Retirar "'+product.desc+'" do estoque? Como esta peça pertence a um lote de fornecedora, o cadastro será preservado como baixado para não alterar a quantidade original do lote.'))return;
+    const {error:moveError}=await sb.from('product_movements').insert({product_id:productId,movement_type:'removed',description:'Peça retirada do estoque pelo painel administrativo'});
+    if(moveError)return reportError(moveError,'Não foi possível registrar a baixa da peça.');
+    const {error:updateError}=await sb.from('products').update({status:'removed'}).eq('id',productId);
+    if(updateError)return reportError(updateError,'Não foi possível baixar a peça.');
+    await loadCloud();alert('Peça baixada. O registro foi preservado no lote da fornecedora.');return;
+  }
+  if(!confirm('Excluir definitivamente "'+product.desc+'"? Ele será removido do cadastro e esta ação não pode ser desfeita.'))return;
   const {error:movementError}=await sb.from('product_movements').delete().eq('product_id',productId);
   if(movementError)return reportError(movementError,'Não foi possível remover o histórico de movimentações do produto.');
   const {error:barcodeError}=await sb.from('barcode_history').delete().eq('product_id',productId);
@@ -981,6 +989,8 @@ function label(productId){
   win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Etiqueta</title><style>body{font:14px Arial;padding:18px;text-align:center}h2{font-size:16px}.short{font-size:26px;font-weight:bold}.price{font-size:22px;font-weight:bold}svg{width:100%;height:65px}</style></head><body><b>GARIMPEIRA DE CABIDE</b><h2>${esc(p.desc)}</h2><div>CÓDIGO LIVE</div><div class="short">${esc(p.short)}</div><div class="price">${money(p.price)}</div><svg id="b"></svg><div>${esc(p.barcode)}</div><script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"><\/script><script>JsBarcode('#b','${String(p.barcode).replace(/'/g,'')}',{format:'CODE128',displayValue:false});window.print();<\/script></body></html>`);win.document.close();
 }
 async function init(){
+  const dateField=el('lotDate');
+  if(dateField){const d=new Date();dateField.value=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
   const {data:{session}}=await sb.auth.getSession();
   if(session){currentUser=session.user;try{await loadCloud();el('loginScreen').style.display='none';el('app').style.display='block';el('logoutBtn').style.display='inline-block';setStatus('Conectado ao Supabase',true);}catch(err){setStatus('Falha ao carregar dados');reportError(err,'A sessão existe, mas não consegui carregar o banco.');}}
   else setStatus('Aguardando login');
