@@ -327,7 +327,7 @@ function renderCart(){
     }else if(balance>0){
       firstPanel+=`<div class="note"><b>Saldo restante das peças: ${money(balance)}</b>${Number(meta?.balancePaid||0)>0?'<br>Pagamentos adicionais já conferidos: '+money(meta.balancePaid):''}<br><button onclick="createBagBalanceCheckout('${cid}')">Gerar cobrança Pix do saldo e abrir WhatsApp</button> <button class="secondary" onclick="registerManualCardPayment('${cid}')">Registrar cartão pago por link externo</button><p class="small-muted">Se a cliente escolher cartão, envie seu link do Mercado Pago por fora e registre aqui somente depois de conferir o recebimento.</p></div>`;
     }else{
-      firstPanel+=`<div class="note">A primeira peça já quitou o total das peças. Não há saldo restante para cobrar.</div>`;
+      firstPanel+=`<div class="note">A sacolinha já está totalmente quitada. Todos os pagamentos foram conferidos.</div>`;
     }
   }else if(first?.status==='failed'||first?.status==='cancelled'){
     firstPanel=`<div class="note">A cobrança anterior não foi concluída. Gere uma nova cobrança para liberar as próximas peças.</div><div class="formgrid"><div class="field"><label for="firstPayMethod">Forma de pagamento</label><select id="firstPayMethod"><option value="pix">Pix</option><option value="card">Cartão de crédito</option></select></div></div><button onclick="createFirstItemCheckout('${cid}')">Gerar nova cobrança e abrir WhatsApp</button>`;
@@ -373,7 +373,7 @@ function balancePaymentMessage(customer,meta,items,payment){
   const firstPaid=meta.firstPayment?.status==='paid'?Number(meta.firstPayment.base_amount||0):0;
   const deadline=payment.due_at?new Date(payment.due_at).toLocaleString('pt-BR'):'15h do dia seguinte';
   const list=items.map(i=>'• '+i.description+' ('+i.size+'): '+money(i.price)).join('\n');
-  return 'Olá, '+customer.name+'! 🤍 Segue o fechamento da sua sacolinha da Garimpeira de Cabide.\n\n'+list+'\n\nSubtotal: '+money(subtotal)+'\nDesconto: '+money(meta.discount||0)+'\nTotal das peças: '+money(total)+'\nPrimeira peça já paga: − '+money(firstPaid)+'\nSaldo das peças: '+money(payment.base_amount)+'\nTaxa de processamento Pix: '+money(payment.fee_amount)+'\nTotal do Pix: '+money(payment.amount)+'\n\nPague pelo link seguro do Mercado Pago: '+payment.checkout_url+'\n\nPrazo para pagamento: '+deadline+'. Obrigada pela preferência! 🤍';
+  return 'Olá, '+customer.name+'! 🤍 Segue o fechamento da sua sacolinha da Garimpeira de Cabide.\n\n'+list+'\n\nSubtotal: '+money(subtotal)+'\nDesconto: '+money(meta.discount||0)+'\nTotal das peças: '+money(total)+'\nPrimeira peça já paga: − '+money(firstPaid)+'\nPagamentos adicionais já conferidos: − '+money(meta.balancePaid||0)+'\nSaldo das peças: '+money(payment.base_amount)+'\nTaxa de processamento Pix: '+money(payment.fee_amount)+'\nTotal do Pix: '+money(payment.amount)+'\n\nPague pelo link seguro do Mercado Pago: '+payment.checkout_url+'\n\nPrazo para pagamento: '+deadline+'. Obrigada pela preferência! 🤍';
 }
 function sendBagBalanceWhatsApp(customerId){
   const meta=db.bagMeta[customerId],payment=meta?.balancePayment,customer=db.clients.find(c=>c.id===customerId),items=db.bags[customerId]||[];
