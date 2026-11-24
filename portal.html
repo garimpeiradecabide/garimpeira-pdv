@@ -153,7 +153,7 @@ async function loadCustomerData(customer){
     const subtotal=list.reduce((s,i)=>s+Number(i.price_snapshot||0),0),discount=Number(bag.discount_amount||0),total=Math.max(0,subtotal-discount);
     const firstPayment=payments.find(p=>p.bag_id===bag.id&&p.purpose==='first_item'&&!p.superseded_at);
     const paidFirst=firstPayment?.status==='paid';
-    const firstPaymentCombined=!!bag.first_payment_combined_at;
+    const firstPaymentCombined=!!bag.first_payment_combined_at&&!paidFirst;
     const firstCredit=paidFirst?Number(firstPayment.base_amount||0):0;
     const balancePayments=payments.filter(p=>p.bag_id===bag.id&&p.purpose==='bag_balance'&&p.status==='paid'&&!p.superseded_at);
     const balancePaid=balancePayments.reduce((sum,p)=>sum+Number(p.base_amount||0),0);
