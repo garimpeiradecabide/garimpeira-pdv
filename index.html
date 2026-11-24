@@ -253,12 +253,12 @@ async function scanShort(){
 async function removeBagItem(customerId,itemId){
   const meta=db.bagMeta[customerId],items=db.bags[customerId]||[];
   if(meta?.firstPayment?.status==='pending')return alert('A primeira peça está aguardando pagamento. Não remova esta peça até a cobrança ser resolvida.');
-  if(meta?.firstPayment?.status==='paid'&&items[0]?.id===itemId)return alert('A primeira peça já foi paga e não pode ser removida por esta tela.');
+  if(meta?.balancePayment?.status==='pending')return alert('Existe uma cobrança do saldo aguardando pagamento. Não remova peças até resolver a cobrança.');
+  if(meta?.firstPayment?.status==='paid'&&items[0]?.id===itemId)return alert('A primeira peça já foi paga e não pode ser removida por esta ação.');
   if(!confirm('Remover esta peça da sacolinha e devolver ao estoque?'))return;
   try{
-    const {data:item,error}=await sb.from('bag_items').select('*').eq('id',itemId).single();if(error)throw error;
-    const del=await sb.from('bag_items').delete().eq('id',itemId);if(del.error)throw del.error;
-    const upd=await sb.from('products').update({status:'available'}).eq('id',item.product_id);if(upd.error)throw upd.error;
+    const {error}=await sb.rpc('admin_remove_bag_item',{p_item_id:itemId});
+    if(error)throw error;
     await loadCloud();
   }catch(err){reportError(err,'Não foi possível remover a peça.');}
 }
@@ -378,6 +378,7 @@ async function createBagBalanceCheckout(customerId){
 function parseMoneyInput(value){const s=String(value).trim().replaceAll(' ','');return Number(s.includes(',')?s.split('.').join('').replace(',','.'):s);}
 async function setBagDiscount(customerId){
   const meta=db.bagMeta[customerId];if(!meta)return alert('Esta cliente ainda não possui sacolinha aberta.');
+  if(meta.balancePayment?.status==='pending')return alert('Existe uma cobrança do saldo pendente. Aguarde a confirmação antes de alterar o desconto.');
   const subtotal=(db.bags[customerId]||[]).reduce((sum,item)=>sum+Number(item.price||0),0);
   const mode=prompt('Como deseja conceder o desconto? Digite R para valor em reais ou % para percentual:','R');if(mode===null)return;
   const raw=prompt(mode.trim()==='%'?'Informe o percentual de desconto (ex.: 10):':'Informe o desconto em reais (ex.: 10,00).',String(meta.discount||0).replace('.',','));if(raw===null)return;
@@ -396,6 +397,7 @@ async function closeBag(customerId){
   const total=Math.max(0,subtotal-Number(meta.discount||0));
   const paidCredit=meta.firstPayment?.status==='paid'?Number(meta.firstPayment.base_amount||0):0;
   const balance=Math.max(0,total-paidCredit);
+  if(meta.balancePayment?.status==='pending')return alert('Existe uma cobrança do saldo aguardando pagamento. Aguarde a confirmação ou resolva essa cobrança antes de fechar manualmente.');
   if(meta.firstPayment?.status!=='paid')return alert('A primeira peça precisa estar paga e aprovada antes do fechamento.');
   if(balance===0){
     if(!confirm('Não há saldo restante. Deseja finalizar a sacolinha usando o crédito da primeira peça já paga?'))return;
@@ -417,7 +419,7 @@ async function closeBag(customerId){
     if(rate<=0)return alert('Configure a taxa efetiva do cartão na aba Pagamentos.');
     const p=prompt('Quanto do saldo será pago no Pix? (valor das peças, sem taxa):');if(p===null)return;
     pix=parseMoneyInput(p);
-    if(!Number.isFinite(pix)||pix<0||pix>=balance)return alert('Informe um valor de Pix entre zero e o saldo total.');
+    if(!Number.isFinite(pix)||pix<=0||pix>=balance)return alert('Informe um valor de Pix maior que zero e menor que o saldo total.');
     const cardBase=Math.round((balance-pix)*100)/100;
     card=Math.round(cardBase*(1+rate/100)*100)/100;cardFee=card-cardBase;
   }
