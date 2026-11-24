@@ -438,8 +438,7 @@ function normalizeWhatsapp(phone){
   return digits.length===10||digits.length===11?'55'+digits:digits;
 }
 function firstPaymentMessage(customer,first){
-  const method=first.method==='card'?'cartão de crédito':'Pix';
-  return 'Olá, '+customer.name+'! 🤍 Para confirmar sua primeira peça na Garimpeira de Cabide, faça o pagamento obrigatório pelo link: '+first.checkout_url+'\n\nPeça: '+money(first.base_amount)+'\nTaxa de processamento: '+money(first.fee_amount)+'\nTotal a pagar agora: '+money(first.amount)+' ('+method+').\n\nAssim que o Mercado Pago aprovar o pagamento, o sistema libera automaticamente suas próximas compras na live. Obrigada!';
+  return 'Olá, '+customer.name+'! 🤍 Sua primeira peça está reservada. Para confirmar, é só realizar o pagamento pelo link abaixo. Assim que o pagamento for aprovado, você já pode voltar à live e continuar suas compras. 🛍️\n\n'+first.checkout_url;
 }
 function sendFirstPaymentWhatsApp(customerId){
   const meta=db.bagMeta[customerId],first=meta?.firstPayment,customer=db.clients.find(c=>c.id===customerId);
@@ -494,14 +493,11 @@ async function createFirstItemCheckout(customerId){
   else alert('Cobrança criada. Link: '+fresh.checkout_url+'\\nAbra o WhatsApp da cliente e envie manualmente.');
 }
 function balancePaymentMessage(customer,meta,items,payment){
-  const subtotal=items.reduce((sum,item)=>sum+Number(item.price||0),0);
   const discount=Number(meta.discount||0);
-  const total=Math.max(0,subtotal-discount);
-  const firstPaid=meta.firstPayment?.status==='paid'?Number(meta.firstPayment.base_amount||0):0;
   const list=items.map(i=>'• '+i.description+' ('+i.size+'): '+money(i.price)).join('\n');
   const hour=Number(new Intl.DateTimeFormat('pt-BR',{hour:'2-digit',hour12:false}).format(new Date()));
   const greeting=hour<12?'Bom dia':hour<18?'Boa tarde':'Boa noite';
-  return greeting+', '+customer.name+'! 🤍\n\nPassei para te enviar o resumo atualizado da sua sacolinha da Garimpeira de Cabide:\n\n'+list+'\n\nSubtotal: '+money(subtotal)+(discount>0?'\nDesconto: − '+money(discount):'')+'\nTotal das peças: '+money(total)+'\nPrimeira peça já paga: − '+money(firstPaid)+(Number(meta.balancePaid||0)>0?'\nOutro pagamento já confirmado: − '+money(meta.balancePaid):'')+(meta.supersededPayments?.length?'\n\nATENÇÃO: desconsidere todos os links de cobrança anteriores. Utilize somente este novo link.':'')+'\n\n**Saldo para finalizar: '+money(payment.amount)+'**\n\nPara concluir, é só pagar pelo link seguro do Mercado Pago:\n'+payment.checkout_url+'\n\nMuito obrigada pela preferência! 🤍';
+  return greeting+', '+customer.name+'! 🤍\n\nSegue a notinha da sua compra na Garimpeira de Cabide:\n\n'+list+(discount>0?'\n\nDesconto: − '+money(discount):'')+'\n\nTotal para pagamento: '+money(payment.amount)+(meta.supersededPayments?.length?'\n\nSe recebeu outro link anteriormente, desconsidere-o e utilize somente este.':'')+'\n\nPara concluir sua compra, é só realizar o pagamento pelo link abaixo:\n'+payment.checkout_url+'\n\nMuito obrigada por garimpar com a gente! 🤍';
 }
 
 function sendBagBalanceWhatsApp(customerId){
