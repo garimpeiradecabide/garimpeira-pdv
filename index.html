@@ -636,6 +636,9 @@ function renderCart(){
     firstPanel+
     (meta?`<div class="row" style="margin-top:12px"><button class="secondary" onclick="setBagDiscount('${cid}')">Conceder / alterar desconto</button><button onclick="closeBag('${cid}')" ${items.length&&(total===0||(first?.status==='paid'&&balance===0))?'':'disabled'}>Finalizar sacolinha quitada</button></div>`:'');
 }
+function customerFirstName(customer){
+  return String(customer?.name||'').trim().split(/\\s+/)[0]||'';
+}
 function sendLiveBagInvoice(customerId){
   const customer=db.clients.find(row=>row.id===customerId);
   const items=db.bags[customerId]||[];
@@ -652,7 +655,8 @@ function sendLiveBagInvoice(customerId){
   const provider=settings.pix_provider||el('pixProvider')?.value||'';
   const receiver=settings.pix_receiver||el('pixReceiver')?.value||'';
   if(!pixKey)return alert('Cadastre sua chave Pix na aba Pagamentos antes de enviar a comanda.');
-  const message='Olá, '+customer.name+'! 🤍 Segue a comanda da sua live na Garimpeira de Cabide:\n\n'+lines.join('\n')+'\n\nSubtotal: '+money(subtotal)+(discount>0?'\nDesconto: -'+money(discount):'')+'\n*TOTAL A PAGAR: '+money(total)+'*\n\n*Dados para pagamento via Pix*\nChave ('+keyType+'): '+pixKey+(provider?'\nInstituição: '+provider:'')+(receiver?'\nTitular: '+receiver:'')+'\n\nDepois de realizar o Pix, por favor, envie o comprovante por aqui. Assim que confirmarmos o recebimento, atualizaremos sua sacolinha e você poderá solicitar a entrega. 💚';
+  const firstName=customerFirstName(customer);
+  const message='Oi'+(firstName?', '+firstName:'')+'! 🤍 Segue a comanda da sua live na Garimpeira de Cabide:\n\n'+lines.join('\n')+'\n\nSubtotal: '+money(subtotal)+(discount>0?'\nDesconto: -'+money(discount):'')+'\n*TOTAL A PAGAR: '+money(total)+'*\n\n*Dados para pagamento via Pix*\nChave ('+keyType+'): '+pixKey+(provider?'\nInstituição: '+provider:'')+(receiver?'\nTitular: '+receiver:'')+'\n\nDepois de realizar o Pix, por favor, envie o comprovante por aqui. Assim que confirmarmos o recebimento, atualizaremos sua sacolinha e você poderá solicitar a entrega. 💚';
   window.open('https://wa.me/'+normalizeWhatsapp(customer.phone)+'?text='+encodeURIComponent(message),'_blank');
 }
 function normalizeWhatsapp(phone){
@@ -661,7 +665,7 @@ function normalizeWhatsapp(phone){
   return digits.length===10||digits.length===11?'55'+digits:digits;
 }
 function firstPaymentMessage(customer,first){
-  return 'Olá, '+customer.name+'! 🤍 Sua primeira peça está reservada. Para confirmar, é só realizar o pagamento pelo link abaixo. Assim que o pagamento for aprovado, você já pode voltar à live e continuar suas compras. 🛍️\n\n'+first.checkout_url;
+  return 'Oi'+(customerFirstName(customer)?', '+customerFirstName(customer):'')+'! 🤍 Sua primeira peça está reservada. Para confirmar, é só realizar o pagamento pelo link abaixo. Assim que o pagamento for aprovado, você já pode voltar à live e continuar suas compras. 🛍️\n\n'+first.checkout_url;
 }
 function sendFirstPaymentWhatsApp(customerId){
   const meta=db.bagMeta[customerId],first=meta?.firstPayment,customer=db.clients.find(c=>c.id===customerId);
