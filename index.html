@@ -546,7 +546,7 @@ function renderSuppliers(){
   el('supplierList').innerHTML=db.suppliers.map(s=>'<div class="statline"><span><b>'+esc(s.name)+'</b><br><small>'+esc(s.phone)+' • '+esc(ruleLabel(s.rule))+' • '+(s.active?'Ativa':'Inativa')+'</small></span><div class="row"><button class="secondary" onclick="editSupplier(\''+s.id+'\')">Editar</button>'+(s.active?'<button class="secondary" onclick="deleteSupplier(\''+s.id+'\')">Excluir / inativar</button>':'<button class="secondary" onclick="toggleSupplierActive(\''+s.id+'\')">Reativar</button>')+'</div></div>').join('')||'<div class="empty">Nenhuma fornecedora cadastrada.</div>';
   const active=db.suppliers.filter(s=>s.active);
   el('lotSupplier').innerHTML='<option value="">Selecione a fornecedora</option>'+active.map(s=>'<option value="'+s.id+'">'+esc(s.name)+'</option>').join('');
-  el('supplierLotsList').innerHTML=active.map(s=>{
+  el('supplierLotsList').innerHTML=db.suppliers.map(s=>{
     const lots=db.supplierLots.filter(l=>l.supplier_id===s.id);if(!lots.length)return '';
     return '<div class="card" style="margin:12px 0"><b>Entradas de '+esc(s.name)+'</b>'+lots.map(l=>{
       const assigned=db.products.filter(p=>p.supplierLotId===l.id),returns=db.supplierLotReturns.filter(r=>r.supplier_lot_id===l.id),returned=returns.reduce((sum,r)=>sum+Number(r.quantity||0),0);
