@@ -110,7 +110,8 @@ table{width:100%;border-collapse:collapse;margin-top:12px;background:white}th,td
       <div class="field"><label for="liveClient">Cliente selecionada</label><select id="liveClient" onchange="renderCart()"></select></div>
       <div class="field"><label for="scan">Leitor / código de barras</label><input id="scan" placeholder="Bipe o código e pressione Enter" onkeydown="if(event.key==='Enter'){event.preventDefault();scanProduct()}"></div>
       <div class="field"><label for="shortScan">Ou código curto da live</label><input id="shortScan" placeholder="Ex.: 025" onkeydown="if(event.key==='Enter'){event.preventDefault();scanShort()}"></div>
-    </div><div class="row"><button onclick="scanProduct()">Adicionar código</button><button class="secondary" onclick="scanShort()">Adicionar código curto</button><button class="secondary" onclick="show('clients')">Cadastrar cliente</button></div>
+      <div class="field"><label for="liveSearch">Pesquisar peça pelo nome, tamanho, código de live ou barras</label><input id="liveSearch" placeholder="Digite parte da descrição ou um código..." oninput="searchLiveProducts()"></div>
+    </div><div id="liveSearchResults"></div><div class="row"><button onclick="scanProduct()">Adicionar código</button><button class="secondary" onclick="scanShort()">Adicionar código curto</button><button class="secondary" onclick="show('clients')">Cadastrar cliente</button></div>
     <div id="cart"></div><div class="note">Cada peça reservada é registrada no banco e fica vinculada à sacolinha da cliente.</div>
   </div></section>
   <section id="bags" class="panel"><div class="card"><h3>Solicitações de fechamento</h3><p class="sub">Pedidos enviados pelas clientes, aguardando conferência da Garimpeira.</p><div id="closeRequestList"></div></div><div class="card"><h3>Sacolinhas permanentes</h3><div id="bagList"></div></div></section>
@@ -252,7 +253,26 @@ async function scanProduct(){
 }
 async function scanShort(){
   const code=el('shortScan').value.trim();el('shortScan').value='';
-  const product=db.products.find(p=>p.short===code);if(!product)return alert('Código curto não encontrado.');
+  const matches=db.products.filter(p=>p.short===code&&p.status==='Disponível');
+  if(!matches.length)return alert('Nenhuma peça disponível encontrada com esse código de live.');
+  if(matches.length===1){await addToBag(matches[0]);return;}
+  showLiveMatches(matches,'Há mais de uma peça disponível com esse código de live. Escolha a peça correta:');
+}
+function searchLiveProducts(){
+  const q=(el('liveSearch').value||'').trim().toLocaleLowerCase('pt-BR');
+  if(!q){el('liveSearchResults').innerHTML='';return;}
+  const matches=db.products.filter(p=>p.status==='Disponível'&&[p.desc,p.size,p.short,p.barcode].some(v=>String(v||'').toLocaleLowerCase('pt-BR').includes(q))).slice(0,40);
+  showLiveMatches(matches,matches.length?'Selecione a peça correta:':'Nenhuma peça disponível encontrada.');
+}
+function showLiveMatches(matches,message){
+  const target=el('liveSearchResults');
+  target.innerHTML='<div class="note">'+esc(message)+'</div>'+matches.map(p=>`<div class="statline"><span><b>${esc(p.desc)}</b><br><small>Tamanho: ${esc(p.size||'Não informado')} • Live: ${esc(p.short||'—')} • Barras: ${esc(p.barcode||'—')} • ${money(p.price)}</small></span><button class="secondary" onclick="selectLiveProduct('${esc(p.id)}')">Adicionar</button></div>`).join('');
+}
+async function selectLiveProduct(productId){
+  const product=db.products.find(p=>p.id===productId);
+  if(!product)return alert('Peça não encontrada. Atualize a tela e tente novamente.');
+  if(el('liveSearch'))el('liveSearch').value='';
+  if(el('liveSearchResults'))el('liveSearchResults').innerHTML='';
   await addToBag(product);
 }
 async function removeBagItem(customerId,itemId){
