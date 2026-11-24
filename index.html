@@ -188,10 +188,12 @@ async function loadCloud(){
   for(const bag of b.data){
     db.bags[bag.customer_id]=[];
     const firstPayment=db.payments.find(x=>x.bag_id===bag.id&&x.purpose==='first_item')||null;
-    const balancePayments=db.payments.filter(x=>x.bag_id===bag.id&&x.purpose==='bag_balance'&&x.status==='paid');
+    const balancePayments=db.payments.filter(x=>x.bag_id===bag.id&&x.purpose==='bag_balance'&&x.status==='paid'&&!x.superseded_at);
+    const supersededPayments=db.payments.filter(x=>x.bag_id===bag.id&&x.purpose==='bag_balance'&&x.superseded_at);
+    const lateSupersededPayments=supersededPayments.filter(x=>x.status==='paid');
     const balancePaid=balancePayments.reduce((sum,x)=>sum+Number(x.base_amount||0),0);
-    const balancePayment=db.payments.find(x=>x.bag_id===bag.id&&x.purpose==='bag_balance'&&x.status==='pending')||null;
-    db.bagMeta[bag.customer_id]={id:bag.id,discount:Number(bag.discount_amount||0),reason:bag.discount_reason||'',firstPayment,balancePayment,balancePayments,balancePaid};
+    const balancePayment=db.payments.find(x=>x.bag_id===bag.id&&x.purpose==='bag_balance'&&x.status==='pending'&&!x.superseded_at)||null;
+    db.bagMeta[bag.customer_id]={id:bag.id,discount:Number(bag.discount_amount||0),reason:bag.discount_reason||'',firstPayment,balancePayment,balancePayments,balancePaid,supersededPayments,lateSupersededPayments};
   }
   for(const req of cr.data) db.closeRequests[req.bag_id]=req;
   for(const item of bi.data){
@@ -306,19 +308,18 @@ async function removeBagItem(customerId,itemId){
   const meta=db.bagMeta[customerId],items=db.bags[customerId]||[];
   if(meta?.firstPayment?.status==='pending')return alert('A primeira peça está aguardando pagamento. Não remova esta peça até a cobrança ser resolvida.');
   if(meta?.firstPayment?.status==='paid'&&items[0]?.id===itemId)return alert('A primeira peça já foi paga e não pode ser removida por esta ação.');
+  if(meta?.lateSupersededPayments?.length)return alert('Um link antigo foi pago depois de substituído. Confira esse recebimento antes de fazer novas alterações na sacolinha.');
   const hasPendingBalance=meta?.balancePayment?.status==='pending';
-  const message=hasPendingBalance
-    ?'Existe uma cobrança do saldo ativa. Ao confirmar, o sistema primeiro tentará invalidar o link antigo no Mercado Pago. Só depois removerá a peça e recalculará o saldo. Se o Mercado Pago não confirmar a invalidação, a peça será mantida. Deseja continuar?'
-    :'Remover esta peça da sacolinha e devolver ao estoque?';
-  if(!confirm(message))return;
+  if(!confirm('Remover esta peça da sacolinha e devolver ao estoque? O saldo será recalculado. '+(hasPendingBalance?'A cobrança anterior ficará substituída; depois você poderá gerar e enviar um novo link.':'')))return;
   try{
     const {data,error}=await sb.functions.invoke('admin-remove-bag-item',{body:{item_id:itemId}});
     if(error)throw error;
-    if(data?.error)throw new Error(data.error+(data.details?'\\n'+data.details:''));
+    if(data?.error)throw new Error(data.error+(data.details?'\n'+data.details:''));
     await loadCloud();
-    if(data?.old_link_expired)alert('Peça removida. O link antigo foi invalidado e o saldo foi recalculado. Agora você já pode gerar e enviar a nova cobrança.');
+    alert('Peça removida e saldo recalculado. '+(data?.previous_link_replaced?'A cobrança anterior ficou substituída. Gere a nova cobrança e avise a cliente para desconsiderar o link anterior.':''));
   }catch(err){reportError(err,'Não foi possível remover a peça.');}
 }
+
 function reportError(err,prefix){console.error(err);alert(prefix+'\n\nDetalhe: '+(err.message||err.details||'erro não identificado'));}
 function render(){
   el('mClients').textContent=db.clients.length;el('mProducts').textContent=db.products.length;
@@ -375,13 +376,13 @@ function renderCart(){
   const paidCredit=first?.status==='paid'?Number(first.base_amount||0):0;
   const balance=Math.max(0,total-paidCredit-Number(meta?.balancePaid||0)),balancePayment=meta?.balancePayment;
   const bagPayments=(db.payments||[]).filter(p=>p.bag_id===meta?.id).sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0));
-  const paidTotal=bagPayments.filter(p=>p.status==='paid').reduce((sum,p)=>sum+Number(p.base_amount??p.amount??0),0);
-  const pendingTotal=bagPayments.filter(p=>p.status==='pending').reduce((sum,p)=>sum+Number(p.amount||0),0);
+  const paidTotal=bagPayments.filter(p=>p.status==='paid'&&!p.superseded_at).reduce((sum,p)=>sum+Number(p.base_amount??p.amount??0),0);
+  const pendingTotal=bagPayments.filter(p=>p.status==='pending'&&!p.superseded_at).reduce((sum,p)=>sum+Number(p.amount||0),0);
   const paymentRows=bagPayments.map(p=>{
     const statusLabels={paid:'Pago e aprovado',pending:'Pendente',failed:'Não aprovado',cancelled:'Cancelado',refunded:'Estornado'};
     const purposeLabels={first_item:'Primeira peça',bag_balance:'Saldo da sacolinha'};
     const methodLabels={pix:'Pix',card:'Cartão',cash:'Dinheiro',manual:'Registro manual'};
-    const statusLabel=statusLabels[p.status]||String(p.status||'Status não informado');
+    const statusLabel=p.superseded_at&&p.status==='pending'?'Link substituído — não utilizar':p.superseded_at&&p.status==='paid'?'Link antigo pago — conferir recebimento':(statusLabels[p.status]||String(p.status||'Status não informado'));
     const dateValue=p.paid_at||p.created_at;
     const dateLabel=dateValue?new Date(dateValue).toLocaleString('pt-BR'):'Data não informada';
     return `<div class="statline"><span><b>${esc(purposeLabels[p.purpose]||p.purpose||'Pagamento')}</b><br><small>${esc(methodLabels[p.method]||p.method||'Forma não informada')} • ${dateLabel}</small>${p.due_at&&p.status==='pending'?'<br><small>Vencimento: '+new Date(p.due_at).toLocaleString('pt-BR')+'</small>':''}</span><span style="text-align:right"><b>${money(p.amount)}</b><br><span class="pill">${esc(statusLabel)}</span>${p.status==='paid'&&Number(p.base_amount||0)!==Number(p.amount||0)?'<br><small>Valor considerado: '+money(p.base_amount)+'</small>':''}</span></div>`;
@@ -400,7 +401,7 @@ function renderCart(){
     }else if(first?.environment==='test'&&first.status==='paid'){
       firstPanel=`<div class="note"><b>Pagamento de TESTE aprovado.</b><br>Crédito de teste: ${money(first.base_amount)}<br>As próximas peças estão liberadas nesta sacolinha de teste.</div>`;
       if(isLinkRemovalTest&&balance>0&&balancePayment?.status==='pending'){
-        firstPanel+=`<div class="note"><b>Cobrança de saldo de TESTE criada — NÃO PAGAR.</b><br>Link de teste ativo para ${money(balancePayment.amount)}. Remova a peça de teste para validar a invalidação do link antigo.</div>`;
+        firstPanel+=`<div class="note"><b>Cobrança de saldo de TESTE criada — NÃO PAGAR.</b><br>Link de teste ativo para ${money(balancePayment.amount)}. Remova a peça para substituir o link e recalcular o saldo.</div>`;
       }else if(isLinkRemovalTest&&balance>0){
         firstPanel+=`<div class="note"><b>Saldo de teste: ${money(balance)}</b><br>Gere uma cobrança de sandbox para testar a retirada e o recálculo. Nenhum pagamento real será solicitado.<br><button onclick="createTestBagBalanceCheckout('${cid}')">Gerar cobrança de saldo de TESTE (não pagar)</button></div>`;
       }
@@ -413,7 +414,9 @@ function renderCart(){
     firstPanel=`<div class="note"><b>Primeira peça aguardando pagamento.</b><br>Peça: ${money(first.base_amount)} • Taxa de processamento: ${money(first.fee_amount)} • Total do link: ${money(first.amount)}<br>Forma: ${first.method==='card'?'Cartão de crédito':'Pix'}<br><button class="secondary" onclick="sendFirstPaymentWhatsApp('${cid}')">Abrir WhatsApp com o link novamente</button></div>`;
   }else if(first?.status==='paid'){
     firstPanel=`<div class="note"><b>Primeira peça paga e aprovada.</b><br>Crédito da peça já pago: ${money(first.base_amount)} • Taxa de processamento já paga: ${money(first.fee_amount)}<br>As próximas peças estão liberadas. Saldo das peças: ${money(balance)}.</div>`;
-    if(balance>0&&balancePayment?.status==='pending'){
+    if(meta?.lateSupersededPayments?.length){
+      firstPanel+=`<div class="note"><b>Atenção: um link antigo foi pago depois de substituído.</b><br>Confira esse recebimento manualmente antes de gerar outra cobrança. O sistema não vai cobrar novamente até essa conferência.</div>`;
+    }else if(balance>0&&balancePayment?.status==='pending'){
       firstPanel+=`<div class="note"><b>Cobrança Pix do saldo enviada, aguardando aprovação.</b><br>Valor do Pix: ${money(balancePayment.amount)}<br>Vencimento: ${balancePayment.due_at?new Date(balancePayment.due_at).toLocaleString('pt-BR'):'15h do próximo dia'}<br><button class="secondary" onclick="sendBagBalanceWhatsApp('${cid}')">Abrir WhatsApp com a cobrança novamente</button></div>`;
     }else if(balance>0){
       firstPanel+=`<div class="note"><b>Saldo restante das peças: ${money(balance)}</b>${Number(meta?.balancePaid||0)>0?'<br>Pagamentos adicionais já conferidos: '+money(meta.balancePaid):''}<br><button onclick="createBagBalanceCheckout('${cid}')">Gerar cobrança Pix do saldo e abrir WhatsApp</button> <button class="secondary" onclick="registerManualCardPayment('${cid}')">Registrar cartão pago por link externo</button><p class="small-muted">Se a cliente escolher cartão, envie seu link do Mercado Pago por fora e registre aqui somente depois de conferir o recebimento.</p></div>`;
@@ -498,8 +501,9 @@ function balancePaymentMessage(customer,meta,items,payment){
   const list=items.map(i=>'• '+i.description+' ('+i.size+'): '+money(i.price)).join('\n');
   const hour=Number(new Intl.DateTimeFormat('pt-BR',{hour:'2-digit',hour12:false}).format(new Date()));
   const greeting=hour<12?'Bom dia':hour<18?'Boa tarde':'Boa noite';
-  return greeting+', '+customer.name+'! 🤍\n\nPassei para te enviar o resumo da sua sacolinha da Garimpeira de Cabide:\n\n'+list+'\n\nSubtotal: '+money(subtotal)+(discount>0?'\nDesconto: − '+money(discount):'')+'\nTotal das peças: '+money(total)+'\nPrimeira peça já paga: − '+money(firstPaid)+(Number(meta.balancePaid||0)>0?'\nOutro pagamento já confirmado: − '+money(meta.balancePaid):'')+'\n\n**Saldo para finalizar: '+money(payment.amount)+'**\n\nPara concluir, é só pagar pelo link seguro do Mercado Pago:\n'+payment.checkout_url+'\n\nMuito obrigada pela preferência! 🤍';
+  return greeting+', '+customer.name+'! 🤍\n\nPassei para te enviar o resumo atualizado da sua sacolinha da Garimpeira de Cabide:\n\n'+list+'\n\nSubtotal: '+money(subtotal)+(discount>0?'\nDesconto: − '+money(discount):'')+'\nTotal das peças: '+money(total)+'\nPrimeira peça já paga: − '+money(firstPaid)+(Number(meta.balancePaid||0)>0?'\nOutro pagamento já confirmado: − '+money(meta.balancePaid):'')+(meta.supersededPayments?.length?'\n\nATENÇÃO: desconsidere todos os links de cobrança anteriores. Utilize somente este novo link.':'')+'\n\n**Saldo para finalizar: '+money(payment.amount)+'**\n\nPara concluir, é só pagar pelo link seguro do Mercado Pago:\n'+payment.checkout_url+'\n\nMuito obrigada pela preferência! 🤍';
 }
+
 function sendBagBalanceWhatsApp(customerId){
   const meta=db.bagMeta[customerId],payment=meta?.balancePayment,customer=db.clients.find(c=>c.id===customerId),items=db.bags[customerId]||[];
   if(!payment?.checkout_url||!customer?.phone)return alert('Não encontrei o link ou o WhatsApp cadastrado desta cliente.');
