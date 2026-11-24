@@ -118,8 +118,8 @@ table{width:100%;border-collapse:collapse;margin-top:12px;background:white}th,td
     <div class="field"><label for="pixKey">Chave Pix</label><input id="pixKey" placeholder="Chave Pix atual"></div>
     <div class="field"><label for="pixKeyType">Tipo de chave</label><select id="pixKeyType"><option value="celular">Celular</option><option value="cpf">CPF</option><option value="cnpj">CNPJ</option><option value="email">E-mail</option><option value="aleatoria">Aleatória</option></select></div>
     <div class="field"><label for="pixProvider">Instituição</label><input id="pixProvider" placeholder="Ex.: Mercado Pago"></div>
-    <div class="field"><label for="pixReceiver">Nome do recebedor (como aparece no banco)</label><input id="pixReceiver" placeholder="Nome do titular"></div>
-  </div><button onclick="savePaymentSettings()">Salvar dados do Pix</button><span id="pixSettingsStatus" class="small-muted"></span></div><div class="card"><h3>Conferência de pagamentos</h3><p class="sub">O sistema só registra o pagamento como recebido quando a administração confirma o recebimento. Pix por chave exige conferência no aplicativo da instituição. Cartão/Mercado Pago ainda depende da integração e da confirmação oficial da transação.</p></div></section>
+    <div class="field"><label for="pixReceiver">Nome do recebedor (como aparece no banco)</label><input id="pixReceiver" placeholder="Nome do titular"></div><div class="field"><label for="cardFeePercent">Taxa efetiva do cartão de crédito (%)</label><input id="cardFeePercent" type="number" min="0.01" max="100" step="0.01" placeholder="Ex.: 4,99"></div>
+  </div><button onclick="savePaymentSettings()">Salvar configurações de recebimento</button><span id="pixSettingsStatus" class="small-muted"></span><p class="small-muted">Informe a taxa efetiva da sua conta Mercado Pago para pagamento em 1 parcela. Enquanto não for configurada, o sistema não libera cobranças iniciais por cartão. O checkout inicial ficará limitado a 1 parcela para não aplicar taxa incorreta.</p></div><div class="card"><h3>Conferência de pagamentos</h3><p class="sub">A primeira peça será confirmada automaticamente pelo retorno oficial do Mercado Pago. A taxa do cartão será destacada e somada à cobrança da cliente.</p></div></section>
 </main>
 </div>
 
@@ -128,7 +128,7 @@ table{width:100%;border-collapse:collapse;margin-top:12px;background:white}th,td
 const SUPABASE_URL = 'https://gcyuvbakxswkjcyqscth.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_haoKT8vSzAEpxwfsapBM1A_4REUsg8T';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-let db = {clients:[], suppliers:[], products:[], bags:{}, bagMeta:{}, closeRequests:{}, paymentSettings:null};
+let db = {clients:[], suppliers:[], products:[], bags:{}, bagMeta:{}, closeRequests:{}, paymentSettings:null, payments:[]};
 let currentUser = null;
 const el = id => document.getElementById(id);
 const money = n => Number(n || 0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
@@ -161,24 +161,29 @@ el('loginForm').addEventListener('submit',async e=>{
   catch(err){console.error(err);el('loginMessage').textContent='Não foi possível entrar: '+(err.message||'verifique e-mail e senha');}
 });
 async function loadCloud(){
-  const [c,s,p,b,bi,cr,ps]=await Promise.all([
+  const [c,s,p,b,bi,cr,ps,pay]=await Promise.all([
     sb.from('customers').select('*').order('created_at',{ascending:false}),
     sb.from('suppliers').select('*').eq('active',true).order('name'),
     sb.from('products').select('*').order('created_at',{ascending:false}),
     sb.from('bags').select('*').eq('status','open').order('created_at',{ascending:false}),
     sb.from('bag_items').select('*').eq('status','reserved').order('added_at',{ascending:true}),
     sb.from('bag_close_requests').select('*').eq('status','pending'),
-    sb.from('payment_settings').select('*').eq('singleton',true).maybeSingle()
+    sb.from('payment_settings').select('*').eq('singleton',true).maybeSingle(),
+    sb.from('payments').select('*').order('created_at',{ascending:false})
   ]);
-  for(const r of [c,s,p,b,bi,cr,ps]) if(r.error) throw r.error;
+  for(const r of [c,s,p,b,bi,cr,ps,pay]) if(r.error) throw r.error;
   db.clients=c.data.map(x=>({id:x.id,name:x.name,phone:x.phone||'',email:x.email||'',authUserId:x.auth_user_id||null,obs:x.notes||''}));
   db.suppliers=s.data.map(x=>({id:x.id,name:x.name,phone:x.phone||'',rule:x.settlement_rule||'',notes:x.notes||''}));
-  db.products=p.data.map(x=>({id:x.id,desc:x.description,short:x.short_code||'',size:x.size||'',cost:Number(x.cost||0),price:Number(x.sale_price||0),supplierId:x.supplier_id, supplier:(s.data.find(y=>y.id===x.supplier_id)||{}).name||'',type:x.acquisition_type,barcode:x.barcode||'',status:x.status==='available'?'Disponível':x.status==='reserved'?'Reservada':x.status==='sold'?'Vendida':'Baixada'}));
-  db.bags={};db.bagMeta={};db.closeRequests={};db.paymentSettings=ps.data;
-  if(ps.data){el('pixKey').value=ps.data.pix_key||'';el('pixKeyType').value=ps.data.pix_key_type||'celular';el('pixProvider').value=ps.data.pix_provider||'';el('pixReceiver').value=ps.data.pix_receiver||'';}
+  db.products=p.data.map(x=>({id:x.id,desc:x.description,short:x.short_code||'',size:x.size||'',cost:Number(x.cost||0),price:Number(x.sale_price||0),supplierId:x.supplier_id,supplier:(s.data.find(y=>y.id===x.supplier_id)||{}).name||'',type:x.acquisition_type,barcode:x.barcode||'',status:x.status==='available'?'Disponível':x.status==='reserved'?'Reservada':x.status==='sold'?'Vendida':'Baixada'}));
+  db.bags={};db.bagMeta={};db.closeRequests={};db.paymentSettings=ps.data;db.payments=pay.data||[];
+  if(ps.data){el('pixKey').value=ps.data.pix_key||'';el('pixKeyType').value=ps.data.pix_key_type||'celular';el('pixProvider').value=ps.data.pix_provider||'';el('pixReceiver').value=ps.data.pix_receiver||'';el('cardFeePercent').value=ps.data.card_fee_percent??'';}
   const bagById=new Map(b.data.map(x=>[x.id,x]));
-  for(const bag of b.data){db.bags[bag.customer_id]=[];db.bagMeta[bag.customer_id]={id:bag.id,discount:Number(bag.discount_amount||0),reason:bag.discount_reason||''};}
-  for(const req of cr.data){db.closeRequests[req.bag_id]=req;}
+  for(const bag of b.data){
+    db.bags[bag.customer_id]=[];
+    const firstPayment=db.payments.find(x=>x.bag_id===bag.id&&x.purpose==='first_item')||null;
+    db.bagMeta[bag.customer_id]={id:bag.id,discount:Number(bag.discount_amount||0),reason:bag.discount_reason||'',firstPayment};
+  }
+  for(const req of cr.data) db.closeRequests[req.bag_id]=req;
   for(const item of bi.data){
     const bag=bagById.get(item.bag_id);if(!bag)continue;
     if(!db.bags[bag.customer_id])db.bags[bag.customer_id]=[];
@@ -187,11 +192,14 @@ async function loadCloud(){
   render();
 }
 async function savePaymentSettings(){
-  const payload={singleton:true,pix_key:el('pixKey').value.trim(),pix_key_type:el('pixKeyType').value,pix_provider:el('pixProvider').value.trim(),pix_receiver:el('pixReceiver').value.trim()};
+  const raw=String(el('cardFeePercent').value||'').trim().replace(',','.');
+  const fee=raw===''?null:Number(raw);
+  if(fee!==null&&(!Number.isFinite(fee)||fee<=0||fee>100))return alert('Informe uma taxa válida, maior que zero e até 100%.');
+  const payload={singleton:true,pix_key:el('pixKey').value.trim(),pix_key_type:el('pixKeyType').value,pix_provider:el('pixProvider').value.trim(),pix_receiver:el('pixReceiver').value.trim(),card_fee_percent:fee};
   if(!payload.pix_key||!payload.pix_provider)return alert('Informe a chave Pix e a instituição.');
   const {error}=await sb.from('payment_settings').upsert(payload,{onConflict:'singleton'});
-  if(error)return reportError(error,'Não foi possível salvar os dados de recebimento.');
-  el('pixSettingsStatus').textContent='Dados Pix atualizados.';await loadCloud();
+  if(error)return reportError(error,'Não foi possível salvar as configurações de recebimento.');
+  el('pixSettingsStatus').textContent='Configurações atualizadas.';await loadCloud();
 }
 async function addClient(){
   const name=el('cName').value.trim(),phone=el('cPhone').value.trim();
@@ -226,12 +234,8 @@ async function addToBag(product){
   const cid=el('liveClient').value;if(!cid)return alert('Selecione uma cliente primeiro.');
   if(product.status!=='Disponível')return alert('Esta peça não está disponível.');
   try{
-    let {data:bag,error}=await getOpenBag(cid);if(error)throw error;
-    if(!bag){const created=await sb.from('bags').insert({customer_id:cid,status:'open'}).select().single();if(created.error)throw created.error;bag=created.data;}
-    const {error:insertError}=await sb.from('bag_items').insert({bag_id:bag.id,product_id:product.id,description_snapshot:product.desc,size_snapshot:product.size||null,price_snapshot:product.price,status:'reserved'});
-    if(insertError)throw insertError;
-    const {error:updateError}=await sb.from('products').update({status:'reserved'}).eq('id',product.id).eq('status','available');
-    if(updateError)throw updateError;
+    const {error}=await sb.rpc('admin_add_item_to_bag',{p_customer_id:cid,p_product_id:product.id});
+    if(error)throw error;
     await loadCloud();el('scan').focus();
   }catch(err){reportError(err,'Não foi possível reservar esta peça.');}
 }
@@ -246,6 +250,9 @@ async function scanShort(){
   await addToBag(product);
 }
 async function removeBagItem(customerId,itemId){
+  const meta=db.bagMeta[customerId],items=db.bags[customerId]||[];
+  if(meta?.firstPayment?.status==='pending')return alert('A primeira peça está aguardando pagamento. Não remova esta peça até a cobrança ser resolvida.');
+  if(meta?.firstPayment?.status==='paid'&&items[0]?.id===itemId)return alert('A primeira peça já foi paga e não pode ser removida por esta tela.');
   if(!confirm('Remover esta peça da sacolinha e devolver ao estoque?'))return;
   try{
     const {data:item,error}=await sb.from('bag_items').select('*').eq('id',itemId).single();if(error)throw error;
@@ -297,12 +304,55 @@ function renderSelectors(){
 }
 function renderCart(){
   const cid=el('liveClient').value;if(!cid){el('cart').innerHTML='<div class="empty">Selecione uma cliente para visualizar a sacolinha.</div>';return;}
-  const items=db.bags[cid]||[];const meta=db.bagMeta[cid];let subtotal=0;
+  const items=db.bags[cid]||[],meta=db.bagMeta[cid];let subtotal=0;
   const rows=items.map(item=>{subtotal+=Number(item.price||0);return `<div class="statline"><span>${esc(item.description)}<br><small>${esc(item.size)} • ${money(item.price)}</small></span><button class="danger" onclick="removeBagItem('${cid}','${item.id}')">Remover</button></div>`;}).join('');
-  const discount=Number(meta?.discount||0),total=Math.max(0,subtotal-discount);
+  const discount=Number(meta?.discount||0),total=Math.max(0,subtotal-discount),first=meta?.firstPayment;
+  const paidCredit=first?.status==='paid'?Number(first.base_amount||0):0;
+  let firstPanel='';
+  if(items.length===1&&!first){
+    firstPanel=`<div class="note"><b>Primeira peça: pagamento obrigatório.</b><br>Escolha a forma informada pela cliente durante a live. As próximas peças só serão liberadas após a aprovação do Mercado Pago.<div class="formgrid"><div class="field"><label for="firstPayMethod">Forma de pagamento</label><select id="firstPayMethod"><option value="pix">Pix</option><option value="card">Cartão de crédito</option></select></div></div><button onclick="createFirstItemCheckout('${cid}')">Gerar cobrança e abrir WhatsApp</button></div>`;
+  }else if(first?.status==='pending'){
+    firstPanel=`<div class="note"><b>Primeira peça aguardando pagamento.</b><br>Peça: ${money(first.base_amount)} • Taxa do cartão: ${money(first.fee_amount)} • Total do link: ${money(first.amount)}<br>Forma: ${first.method==='card'?'Cartão de crédito':'Pix'}<br><button class="secondary" onclick="sendFirstPaymentWhatsApp('${cid}')">Abrir WhatsApp com o link novamente</button></div>`;
+  }else if(first?.status==='paid'){
+    firstPanel=`<div class="note"><b>Primeira peça paga e aprovada.</b><br>Crédito da peça já pago: ${money(first.base_amount)} • Taxa paga no cartão: ${money(first.fee_amount)}<br>As próximas peças estão liberadas. Saldo das peças: ${money(Math.max(0,total-paidCredit))}.</div>`;
+  }else if(first?.status==='failed'||first?.status==='cancelled'){
+    firstPanel=`<div class="note">A cobrança anterior não foi concluída. Gere uma nova cobrança para liberar as próximas peças.</div><div class="formgrid"><div class="field"><label for="firstPayMethod">Forma de pagamento</label><select id="firstPayMethod"><option value="pix">Pix</option><option value="card">Cartão de crédito</option></select></div></div><button onclick="createFirstItemCheckout('${cid}')">Gerar nova cobrança e abrir WhatsApp</button>`;
+  }
   el('cart').innerHTML=(rows||'<div class="empty">Esta sacolinha está vazia.</div>')+
-    `<div class="statline"><span>Subtotal</span><b>${money(subtotal)}</b></div><div class="statline"><span>Desconto administrativo</span><b>${money(discount)}</b></div><div class="statline"><b>Total da sacolinha</b><b>${money(total)}</b></div>`+
-    (meta?`<div class="row" style="margin-top:12px"><button class="secondary" onclick="setBagDiscount('${cid}')">Conceder / alterar desconto</button><button onclick="closeBag('${cid}')" ${items.length?'':'disabled'}>Fechar sacolinha e registrar pagamento</button></div>`:'');
+    `<div class="statline"><span>Subtotal</span><b>${money(subtotal)}</b></div><div class="statline"><span>Desconto administrativo</span><b>${money(discount)}</b></div><div class="statline"><b>Total das peças</b><b>${money(total)}</b></div>`+
+    firstPanel+
+    (meta?`<div class="row" style="margin-top:12px"><button class="secondary" onclick="setBagDiscount('${cid}')">Conceder / alterar desconto</button><button onclick="closeBag('${cid}')" ${items.length&&(!first||first.status==='paid')?'':'disabled'}>Fechar sacolinha e registrar pagamento</button></div>`:'');
+}
+function normalizeWhatsapp(phone){
+  let digits=String(phone||'').replace(/\D/g,'');
+  if(digits.startsWith('55'))return digits;
+  return digits.length===10||digits.length===11?'55'+digits:digits;
+}
+function firstPaymentMessage(customer,first){
+  const method=first.method==='card'?'cartão de crédito':'Pix';
+  return 'Olá, '+customer.name+'! 🤍 Para confirmar sua primeira peça na Garimpeira de Cabide, faça o pagamento obrigatório pelo link: '+first.checkout_url+'\n\nPeça: '+money(first.base_amount)+'\nTaxa do cartão: '+money(first.fee_amount)+'\nTotal a pagar agora: '+money(first.amount)+' ('+method+').\n\nAssim que o Mercado Pago aprovar o pagamento, o sistema libera automaticamente suas próximas compras na live. Obrigada!';
+}
+function sendFirstPaymentWhatsApp(customerId){
+  const meta=db.bagMeta[customerId],first=meta?.firstPayment,customer=db.clients.find(c=>c.id===customerId);
+  if(!first?.checkout_url||!customer?.phone)return alert('Não encontrei o link ou o WhatsApp cadastrado desta cliente.');
+  window.open('https://wa.me/'+normalizeWhatsapp(customer.phone)+'?text='+encodeURIComponent(firstPaymentMessage(customer,first)),'_blank');
+}
+async function createFirstItemCheckout(customerId){
+  const meta=db.bagMeta[customerId],customer=db.clients.find(c=>c.id===customerId),method=el('firstPayMethod')?.value;
+  if(!meta?.id||!customer)return alert('Não encontrei a sacolinha ou a cliente.');
+  if(!customer.phone)return alert('Cadastre o WhatsApp da cliente antes de enviar a cobrança.');
+  if(!['pix','card'].includes(method))return alert('Escolha Pix ou cartão.');
+  if(method==='card'&&!(Number(db.paymentSettings?.card_fee_percent)>0))return alert('Configure a taxa efetiva do cartão na aba Pagamentos antes de gerar a cobrança.');
+  const wa=window.open('about:blank','_blank');
+  const {data,error}=await sb.functions.invoke('admin-create-first-item-checkout',{body:{bag_id:meta.id,method}});
+  if(error||data?.error||!data?.init_point){if(wa)wa.close();return alert(data?.error||error?.message||'Não foi possível gerar a cobrança.');}
+  await loadCloud();
+  const fresh=db.bagMeta[customerId]?.firstPayment;
+  if(!fresh?.checkout_url){if(wa)wa.close();return alert('O link foi criado, mas não apareceu no painel. Atualize e confira a cobrança antes de enviar.');}
+  const phone=normalizeWhatsapp(customer.phone);
+  const message=firstPaymentMessage(customer,fresh);
+  if(wa)wa.location.href='https://wa.me/'+phone+'?text='+encodeURIComponent(message);
+  else alert('Cobrança criada. Link: '+fresh.checkout_url+'\nAbra o WhatsApp da cliente e envie manualmente.');
 }
 function parseMoneyInput(value){const s=String(value).trim().replaceAll(' ','');return Number(s.includes(',')?s.split('.').join('').replace(',','.'):s);}
 async function setBagDiscount(customerId){
