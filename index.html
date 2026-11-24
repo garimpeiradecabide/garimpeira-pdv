@@ -100,7 +100,17 @@ table{width:100%;border-collapse:collapse;margin-top:12px;background:white}th,td
       <div class="field"><label for="sName">Nome</label><input id="sName" placeholder="Nome da fornecedora"></div>
       <div class="field"><label for="sPhone">Telefone / WhatsApp</label><input id="sPhone" placeholder="Contato"></div>
       <div class="field"><label for="sRule">Regra de acerto da consignação</label><select id="sRule"><option>Por peça vendida</option><option>Semanal</option><option>Quinzenal</option><option>Mensal</option><option>Personalizado</option></select></div>
-    </div><button onclick="addSupplier()">Salvar fornecedora</button><div id="supplierList"></div><h3>Vendas, repasses e pagamentos por fornecedora</h3><div id="supplierFinanceList"></div>
+    </div><button onclick="addSupplier()">Adicionar fornecedora</button><div id="supplierList"></div>
+    <hr><h3>Registrar entrada de lote</h3><p class="small-muted">Informe a quantidade recebida e o valor combinado por peça. Não é necessário descrever cada peça nesta etapa.</p>
+    <div class="formgrid">
+      <div class="field"><label for="lotSupplier">Fornecedora</label><select id="lotSupplier"></select></div>
+      <div class="field"><label for="lotDate">Data da entrada</label><input id="lotDate" type="date"></div>
+      <div class="field"><label for="lotQty">Quantidade de peças</label><input id="lotQty" type="number" min="1" step="1" placeholder="Ex.: 30"></div>
+      <div class="field"><label for="lotValue">Valor por peça (R$)</label><input id="lotValue" type="number" min="0" step=".01" placeholder="Ex.: 10,00"></div>
+      <div class="field"><label for="lotType">Modalidade</label><select id="lotType"><option value="consignment">Consignação</option><option value="purchase">Compra</option></select></div>
+      <div class="field"><label for="lotNotes">Observações</label><input id="lotNotes" placeholder="Opcional"></div>
+    </div><button onclick="registerSupplierLot()">Registrar entrada do lote</button><div id="supplierLotsList"></div>
+    <hr><h3>Vendas, repasses e pagamentos por fornecedora</h3><div id="supplierFinanceList"></div>
   </div></section>
   <section id="products" class="panel"><div class="card">
     <h3>Cadastro de produtos</h3><div class="formgrid">
@@ -143,7 +153,7 @@ table{width:100%;border-collapse:collapse;margin-top:12px;background:white}th,td
 const SUPABASE_URL = 'https://gcyuvbakxswkjcyqscth.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_haoKT8vSzAEpxwfsapBM1A_4REUsg8T';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-let db = {clients:[], suppliers:[], products:[], bags:{}, bagMeta:{}, closeRequests:{}, paymentSettings:null, payments:[], sales:[], deliveries:[], liveSessions:[], supplierPayments:[]};
+let db = {clients:[], suppliers:[], products:[], supplierLots:[], supplierLotReturns:[], bags:{}, bagMeta:{}, closeRequests:{}, paymentSettings:null, payments:[], sales:[], deliveries:[], liveSessions:[], supplierPayments:[]};
 let currentUser = null;
 let cameraScanner = null;
 let cameraTarget = null;
@@ -187,9 +197,9 @@ el('loginForm').addEventListener('submit',async e=>{
   catch(err){console.error(err);el('loginMessage').textContent='Não foi possível entrar: '+(err.message||'verifique e-mail e senha');}
 });
 async function loadCloud(){
-  const [c,s,p,b,bi,cr,ps,pay,closedBags,soldItems,deliveryRows,liveSessions,supplierPayments]=await Promise.all([
+  const [c,s,p,b,bi,cr,ps,pay,closedBags,soldItems,deliveryRows,liveSessions,supplierPayments,lots,lotReturns]=await Promise.all([
     sb.from('customers').select('*').order('created_at',{ascending:false}),
-    sb.from('suppliers').select('*').eq('active',true).order('name'),
+    sb.from('suppliers').select('*').order('name'),
     sb.from('products').select('*').order('created_at',{ascending:false}),
     sb.from('bags').select('*').eq('status','open').order('created_at',{ascending:false}),
     sb.from('bag_items').select('*').eq('status','reserved').order('added_at',{ascending:true}),
@@ -200,13 +210,16 @@ async function loadCloud(){
     sb.from('bag_items').select('*').order('added_at',{ascending:true}),
     sb.from('deliveries').select('*').order('created_at',{ascending:false}),
     sb.from('live_sessions').select('*').order('started_at',{ascending:false}),
-    sb.from('supplier_payments').select('*').order('paid_at',{ascending:false})
+    sb.from('supplier_payments').select('*').order('paid_at',{ascending:false}),
+    sb.from('supplier_lots').select('*').order('entered_at',{ascending:false}),
+    sb.from('supplier_lot_returns').select('*').order('returned_at',{ascending:false})
   ]);
-  for(const r of [c,s,p,b,bi,cr,ps,pay,closedBags,soldItems,deliveryRows,liveSessions,supplierPayments]) if(r.error) throw r.error;
+  for(const r of [c,s,p,b,bi,cr,ps,pay,closedBags,soldItems,deliveryRows,liveSessions,supplierPayments,lots,lotReturns]) if(r.error) throw r.error;
   db.clients=c.data.map(x=>({id:x.id,name:x.name,phone:x.phone||'',email:x.email||'',authUserId:x.auth_user_id||null,obs:x.notes||''}));
   db.liveSessions=liveSessions.data||[];db.supplierPayments=supplierPayments.data||[];
-  db.suppliers=s.data.map(x=>({id:x.id,name:x.name,phone:x.phone||'',rule:x.settlement_rule||'',notes:x.notes||''}));
-  db.products=p.data.map(x=>({id:x.id,desc:x.description,short:x.short_code||'',size:x.size||'',cost:Number(x.cost||0),price:Number(x.sale_price||0),supplierId:x.supplier_id,supplier:(s.data.find(y=>y.id===x.supplier_id)||{}).name||'',type:x.acquisition_type,barcode:x.barcode||'',status:x.status==='available'?'Disponível':x.status==='reserved'?'Reservada':x.status==='sold'?'Vendida':'Baixada'}));
+  db.supplierLots=lots.data||[];db.supplierLotReturns=lotReturns.data||[];
+  db.suppliers=s.data.map(x=>({id:x.id,name:x.name,phone:x.phone||'',rule:x.settlement_rule||'',notes:x.notes||'',active:x.active!==false}));
+  db.products=p.data.map(x=>({id:x.id,desc:x.description,short:x.short_code||'',size:x.size||'',cost:Number(x.cost||0),price:Number(x.sale_price||0),supplierId:x.supplier_id,supplierLotId:x.supplier_lot_id||null,supplier:(s.data.find(y=>y.id===x.supplier_id)||{}).name||'',type:x.acquisition_type,barcode:x.barcode||'',status:x.status==='available'?'Disponível':x.status==='reserved'?'Reservada':x.status==='sold'?'Vendida':'Baixada'}));
   db.bags={};db.bagMeta={};db.closeRequests={};db.paymentSettings=ps.data;db.payments=pay.data||[];
   const allClosedBags=(closedBags.data||[]).filter(bag=>bag.status==='closed');
   const allSoldItems=(soldItems.data||[]).filter(item=>item.status==='sold');
@@ -317,7 +330,69 @@ async function addSupplier(){
   const name=el('sName').value.trim();if(!name)return alert('Informe o nome.');
   const {error}=await sb.from('suppliers').insert({name,phone:el('sPhone').value.trim()||null,settlement_rule:el('sRule').value,active:true});
   if(error)return reportError(error,'Não foi possível salvar a fornecedora.');
-  el('sName').value='';el('sPhone').value='';await loadCloud();alert('Fornecedora salva no Supabase.');
+  el('sName').value='';el('sPhone').value='';await loadCloud();alert('Fornecedora cadastrada.');
+}
+async function editSupplier(id){
+  const s=db.suppliers.find(x=>x.id===id);if(!s)return;
+  const name=prompt('Nome da fornecedora:',s.name);if(name===null)return;if(!name.trim())return alert('O nome não pode ficar vazio.');
+  const phone=prompt('Telefone / WhatsApp:',s.phone||'');if(phone===null)return;
+  const rule=prompt('Regra de acerto:',s.rule||'Por peça vendida');if(rule===null)return;
+  const {error}=await sb.from('suppliers').update({name:name.trim(),phone:phone.trim()||null,settlement_rule:rule.trim()||'Por peça vendida'}).eq('id',id);
+  if(error)return reportError(error,'Não foi possível editar a fornecedora.');
+  await loadCloud();alert('Dados da fornecedora atualizados.');
+}
+async function deleteSupplier(id){
+  const s=db.suppliers.find(x=>x.id===id);if(!s)return;
+  const [p,pay,l]=await Promise.all([
+    sb.from('products').select('id',{count:'exact',head:true}).eq('supplier_id',id),
+    sb.from('supplier_payments').select('id',{count:'exact',head:true}).eq('supplier_id',id),
+    sb.from('supplier_lots').select('id',{count:'exact',head:true}).eq('supplier_id',id)
+  ]);
+  if(p.error||pay.error||l.error)return reportError(p.error||pay.error||l.error,'Não foi possível verificar o histórico.');
+  if((p.count||0)+(pay.count||0)+(l.count||0)>0){
+    if(!confirm('Esta fornecedora tem peças, lotes ou pagamentos registrados. Ela será INATIVADA para preservar o histórico. Continuar?'))return;
+    const {error}=await sb.from('suppliers').update({active:false}).eq('id',id);
+    if(error)return reportError(error,'Não foi possível inativar a fornecedora.');
+    await loadCloud();alert('Fornecedora inativada. O histórico foi preservado.');return;
+  }
+  if(!confirm('Excluir definitivamente '+s.name+'?'))return;
+  const {error}=await sb.from('suppliers').delete().eq('id',id);
+  if(error)return reportError(error,'Não foi possível excluir a fornecedora.');
+  await loadCloud();alert('Fornecedora excluída.');
+}
+async function toggleSupplierActive(id){
+  const s=db.suppliers.find(x=>x.id===id);if(!s)return;
+  const {error}=await sb.from('suppliers').update({active:!s.active}).eq('id',id);
+  if(error)return reportError(error,'Não foi possível alterar a situação.');
+  await loadCloud();
+}
+async function registerSupplierLot(){
+  const supplierId=el('lotSupplier').value,quantity=Number(el('lotQty').value),value=Number(el('lotValue').value),date=el('lotDate').value;
+  if(!supplierId)return alert('Selecione a fornecedora.');
+  if(!Number.isInteger(quantity)||quantity<=0)return alert('Informe uma quantidade inteira maior que zero.');
+  if(!Number.isFinite(value)||value<0)return alert('Informe um valor por peça válido.');
+  if(!date)return alert('Informe a data da entrada.');
+  const {error}=await sb.from('supplier_lots').insert({supplier_id:supplierId,entered_at:date,received_quantity:quantity,unit_value:value,acquisition_type:el('lotType').value,notes:el('lotNotes').value.trim()||null});
+  if(error)return reportError(error,'Não foi possível registrar o lote.');
+  el('lotQty').value='';el('lotValue').value='';el('lotNotes').value='';
+  await loadCloud();alert('Entrada do lote registrada. Cadastre as peças individuais com a mesma fornecedora, modalidade e custo para vinculá-las automaticamente.');
+}
+async function registerSupplierReturn(lotId){
+  const lot=db.supplierLots.find(x=>x.id===lotId);if(!lot)return;
+  const assigned=db.products.filter(x=>x.supplierLotId===lotId);
+  const returned=db.supplierLotReturns.filter(x=>x.supplier_lot_id===lotId).reduce((sum,x)=>sum+Number(x.quantity||0),0);
+  const unassigned=Math.max(0,Number(lot.received_quantity)-assigned.length-returned);
+  const available=assigned.filter(x=>x.status==='Disponível').length,max=unassigned+available;
+  if(max<=0)return alert('Não há peças disponíveis deste lote para devolver.');
+  const raw=prompt('Quantidade devolvida à fornecedora. Disponíveis: '+max,'1');if(raw===null)return;
+  const quantity=Number(raw);if(!Number.isInteger(quantity)||quantity<=0||quantity>max)return alert('Informe uma quantidade entre 1 e '+max+'.');
+  const d=new Date(),today=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  const date=prompt('Data da devolução (AAAA-MM-DD):',today);if(date===null)return;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||Number.isNaN(new Date(date+'T12:00:00').getTime()))return alert('Informe uma data válida.');
+  const notes=prompt('Observação (opcional):','')||null;
+  const {error}=await sb.rpc('admin_return_supplier_lot',{p_lot_id:lotId,p_quantity:quantity,p_returned_at:date,p_notes:notes});
+  if(error)return reportError(error,'Não foi possível registrar a devolução.');
+  await loadCloud();alert('Devolução registrada e estoque atualizado.');
 }
 async function addProduct(){
   const desc=el('pDesc').value.trim(),price=Number(el('pPrice').value),cost=Number(el('pCost').value||0);
@@ -328,7 +403,18 @@ async function addProduct(){
   const short=el('pShort').value.trim()||String(Date.now()).slice(-3);
   const supplierId=el('pSupplier').value||null;
   if(el('pType').value==='consignment'&&!supplierId)return alert('Selecione a fornecedora da peça consignada para o sistema calcular o repasse corretamente.');
-  const payload={description:desc,short_code:short,size:el('pSize').value.trim()||null,cost,sale_price:price,supplier_id:supplierId,acquisition_type:el('pType').value,barcode,status:'available'};
+  const type=el('pType').value;let supplierLotId=null;
+  if(supplierId){
+    const matchingLots=db.supplierLots.filter(l=>l.supplier_id===supplierId&&l.acquisition_type===type&&Math.abs(Number(l.unit_value)-cost)<0.005).sort((a,b)=>String(a.entered_at).localeCompare(String(b.entered_at)));
+    const lot=matchingLots.find(l=>{
+      const assigned=db.products.filter(p=>p.supplierLotId===l.id).length;
+      const returned=db.supplierLotReturns.filter(r=>r.supplier_lot_id===l.id).reduce((sum,r)=>sum+Number(r.quantity||0),0);
+      return assigned+returned<Number(l.received_quantity);
+    });
+    if(lot)supplierLotId=lot.id;
+    else if(db.supplierLots.some(l=>l.supplier_id===supplierId&&l.acquisition_type===type))return alert('Não há lote aberto com este valor por peça. Registre a entrada do novo lote ou confira o custo.');
+  }
+  const payload={description:desc,short_code:short,size:el('pSize').value.trim()||null,cost,sale_price:price,supplier_id:supplierId,supplier_lot_id:supplierLotId,acquisition_type:type,barcode,status:'available'};
   const {error}=await sb.from('products').insert(payload);
   if(error)return reportError(error,'Não foi possível salvar o produto.');
   ['pDesc','pShort','pSize','pCost','pPrice','pBarcode'].forEach(k=>el(k).value='');
@@ -455,7 +541,19 @@ async function generateCustomerAccess(customerId){
 }
 async function setCustomerEmail(customerId){const customer=db.clients.find(x=>x.id===customerId);if(!customer)return;const email=prompt('E-mail que a cliente usará para criar o acesso ao portal:',customer.email||'');if(email===null)return;const normalized=email.trim().toLowerCase();if(normalized&&(!normalized.includes('@')||!normalized.split('@')[1]?.includes('.')))return alert('Informe um e-mail válido.');const {error}=await sb.from('customers').update({email:normalized||null}).eq('id',customerId);if(error)return reportError(error,'Não foi possível atualizar o e-mail.');await loadCloud();alert('E-mail do portal atualizado. Oriente a cliente a criar o acesso em portal.html.');}
 function renderSuppliers(){
-  el('supplierList').innerHTML=db.suppliers.map(s=>'<div class="statline"><span><b>'+esc(s.name)+'</b><br><small>'+esc(s.phone)+' • '+esc(ruleLabel(s.rule))+'</small></span><span class="pill">Fornecedora</span></div>').join('')||'<div class="empty">Nenhuma fornecedora cadastrada.</div>';
+  el('supplierList').innerHTML=db.suppliers.map(s=>'<div class="statline"><span><b>'+esc(s.name)+'</b><br><small>'+esc(s.phone)+' • '+esc(ruleLabel(s.rule))+' • '+(s.active?'Ativa':'Inativa')+'</small></span><div class="row"><button class="secondary" onclick="editSupplier(\''+s.id+'\')">Editar</button>'+(s.active?'<button class="secondary" onclick="deleteSupplier(\''+s.id+'\')">Excluir / inativar</button>':'<button class="secondary" onclick="toggleSupplierActive(\''+s.id+'\')">Reativar</button>')+'</div></div>').join('')||'<div class="empty">Nenhuma fornecedora cadastrada.</div>';
+  const active=db.suppliers.filter(s=>s.active);
+  el('lotSupplier').innerHTML='<option value="">Selecione a fornecedora</option>'+active.map(s=>'<option value="'+s.id+'">'+esc(s.name)+'</option>').join('');
+  el('supplierLotsList').innerHTML=active.map(s=>{
+    const lots=db.supplierLots.filter(l=>l.supplier_id===s.id);if(!lots.length)return '';
+    return '<div class="card" style="margin:12px 0"><b>Entradas de '+esc(s.name)+'</b>'+lots.map(l=>{
+      const assigned=db.products.filter(p=>p.supplierLotId===l.id),returns=db.supplierLotReturns.filter(r=>r.supplier_lot_id===l.id),returned=returns.reduce((sum,r)=>sum+Number(r.quantity||0),0);
+      const sold=assigned.filter(p=>p.status==='Vendida').length,available=assigned.filter(p=>p.status==='Disponível').length,reserved=assigned.filter(p=>p.status==='Reservada').length;
+      const unassigned=Math.max(0,Number(l.received_quantity)-assigned.length-returned),due=l.acquisition_type==='consignment'?sold*Number(l.unit_value):0;
+      const returnRows=returns.map(r=>'<div class="statline"><span>'+new Date(r.returned_at+'T12:00:00').toLocaleDateString('pt-BR')+' • '+esc(r.notes||'Devolução')+'</span><b>'+r.quantity+' peça(s)</b></div>').join('');
+      return '<div style="border:1px solid var(--line);border-radius:10px;padding:12px;margin-top:10px"><b>Entrada em '+new Date(l.entered_at+'T12:00:00').toLocaleDateString('pt-BR')+'</b><br><small>'+l.received_quantity+' peças • '+money(l.unit_value)+' por peça • '+(l.acquisition_type==='consignment'?'Consignação':'Compra')+'</small><div class="grid" style="margin-top:10px"><div><small>Vendidas</small><br><b>'+sold+'</b></div><div><small>Em estoque</small><br><b>'+available+'</b></div><div><small>Reservadas</small><br><b>'+reserved+'</b></div><div><small>Sem cadastro individual</small><br><b>'+unassigned+'</b></div><div><small>Devolvidas</small><br><b>'+returned+'</b></div><div><small>Repasse gerado</small><br><b>'+money(due)+'</b></div></div>'+(unassigned+available>0?'<button class="secondary" onclick="registerSupplierReturn(\''+l.id+'\')">Registrar devolução deste lote</button>':'')+'<details style="margin-top:8px"><summary>Histórico de devoluções ('+returns.length+')</summary>'+(returnRows||'<p class="small-muted">Nenhuma devolução registrada.</p>')+'</details></div>';
+    }).join('')+'</div>';
+  }).join('')||'<div class="empty">Registre a primeira entrada de lote para acompanhar as quantidades.</div>';
   el('supplierFinanceList').innerHTML=db.suppliers.map(s=>{
     const sold=db.sales.flatMap(sale=>sale.items.filter(item=>item.supplierId===s.id).map(item=>Object.assign({},item,{saleDate:sale.closedAt})));
     const consigned=sold.filter(item=>item.acquisitionType==='consignment');
@@ -584,8 +682,8 @@ function filterLiveClients(){
 }
 function renderSelectors(){
   const ss=el('pSupplier').value;
-  el('pSupplier').innerHTML='<option value="">Sem fornecedora</option>'+db.suppliers.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
-  if(db.suppliers.some(s=>s.id===ss))el('pSupplier').value=ss;
+  el('pSupplier').innerHTML='<option value="">Sem fornecedora</option>'+db.suppliers.filter(s=>s.active).map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
+  if(db.suppliers.some(s=>s.id===ss&&s.active))el('pSupplier').value=ss;
   filterLiveClients();
 }
 function renderCart(){
