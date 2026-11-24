@@ -127,7 +127,7 @@ table{width:100%;border-collapse:collapse;margin-top:12px;background:white}th,td
     <div class="field"><label for="pixKeyType">Tipo de chave</label><select id="pixKeyType"><option value="celular">Celular</option><option value="cpf">CPF</option><option value="cnpj">CNPJ</option><option value="email">E-mail</option><option value="aleatoria">Aleatória</option></select></div>
     <div class="field"><label for="pixProvider">Instituição</label><input id="pixProvider" placeholder="Ex.: Mercado Pago"></div>
     <div class="field"><label for="pixReceiver">Nome do recebedor (como aparece no banco)</label><input id="pixReceiver" placeholder="Nome do titular"></div><div class="field"><label for="pixFeePercent">Taxa de processamento Pix (%)</label><input id="pixFeePercent" type="number" min="0" max="100" step="0.01" placeholder="0,99"></div><div class="field"><label for="cardFeePercent">Taxa de processamento do cartão (link online, 1x) (%)</label><input id="cardFeePercent" type="number" min="0.01" max="100" step="0.01" placeholder="4,98"></div>
-  </div><button onclick="savePaymentSettings()">Salvar configurações de recebimento</button><span id="pixSettingsStatus" class="small-muted"></span><p class="small-muted">Informe a taxa de processamento do Checkout Pro / link online com recebimento imediato (D0), não a taxa da maquininha física. Na primeira peça, o Mercado Pago confirma Pix ou cartão automaticamente e permite até 18 parcelas, conforme as condições da sua conta. Os juros do parcelamento são repassados pelo próprio Mercado Pago à compradora. No saldo restante, o sistema gera cobrança Pix; cartão é registrado manualmente somente após você conferir o recebimento do link externo.</p></div><div class="card"><h3>Conferência de pagamentos</h3><p class="sub">A primeira peça será confirmada automaticamente pelo Mercado Pago. O saldo por Pix também terá confirmação automática. Pagamentos de saldo por cartão, feitos em link externo, serão registrados manualmente pela administração após conferência.</p></div></section>
+  </div><button onclick="savePaymentSettings()">Salvar configurações de recebimento</button><span id="pixSettingsStatus" class="small-muted"></span><p class="small-muted">Informe a taxa de processamento do Checkout Pro / link online com recebimento imediato (D0), não a taxa da maquininha física. A primeira peça pode ser cobrada por link e tem confirmação automática do Mercado Pago. Se a cliente não puder pagar na hora, somente a administração poderá autorizar pagamento combinado. O saldo restante é cobrado diretamente pelo WhatsApp e confirmado manualmente após conferir o recebimento externo.</p></div><div class="card"><h3>Conferência de pagamentos</h3><p class="sub">A primeira peça mantém confirmação automática quando paga pelo link. Se a cliente não puder pagar na hora, a administração poderá autorizar pagamento combinado. O saldo restante será cobrado diretamente pelo WhatsApp e confirmado manualmente após conferir o recebimento externo.</p></div></section>
 </main>
 </div>
 <div id="cameraScanner"><div class="camera-card"><div class="row between"><b>Leia o código de barras da peça</b><button type="button" class="secondary" onclick="closeCameraScan()">Fechar</button></div><p class="small-muted">Aponte a câmera para a etiqueta Code 128.</p><div id="reader"></div><p id="cameraMessage" class="small-muted">Aguardando a câmera…</p></div></div>
@@ -210,7 +210,7 @@ async function loadCloud(){
     const lateSupersededPayments=supersededPayments.filter(x=>x.status==='paid');
     const balancePaid=balancePayments.reduce((sum,x)=>sum+Number(x.base_amount||0),0);
     const balancePayment=db.payments.find(x=>x.bag_id===bag.id&&x.purpose==='bag_balance'&&x.status==='pending'&&!x.superseded_at)||null;
-    db.bagMeta[bag.customer_id]={id:bag.id,discount:Number(bag.discount_amount||0),reason:bag.discount_reason||'',firstPayment,balancePayment,balancePayments,balancePaid,supersededPayments,lateSupersededPayments};
+    db.bagMeta[bag.customer_id]={id:bag.id,discount:Number(bag.discount_amount||0),reason:bag.discount_reason||'',firstPaymentCombinedAt:bag.first_payment_combined_at||null,firstPaymentCombinedBy:bag.first_payment_combined_by||null,firstPayment,balancePayment,balancePayments,balancePaid,supersededPayments,lateSupersededPayments};
   }
   for(const req of cr.data) db.closeRequests[req.bag_id]=req;
   for(const item of bi.data){
@@ -409,7 +409,6 @@ function renderCart(){
   const customer=db.clients.find(c=>c.id===cid);
   const testCustomerName=(customer?.name||'').trim().toLowerCase();
   const isTestCustomer=testCustomerName==='jilo maria'||testCustomerName==='teste retirada link - não pagar';
-  const isLinkRemovalTest=testCustomerName==='teste retirada link - não pagar';
   if(isTestCustomer){
     if(items.length===1&&(!first||first.status==='failed')){
       firstPanel=`<div class="note"><b>Ambiente de TESTE — Mercado Pago.</b><br>Esta sacolinha é exclusiva para testes. Nenhuma cobrança real será enviada.<div class="formgrid"><div class="field"><label for="testFirstPayMethod">Forma de pagamento</label><select id="testFirstPayMethod"><option value="pix">Pix</option><option value="card">Cartão de crédito</option></select></div></div><button onclick="createTestFirstItemCheckout('${cid}')">Gerar checkout de TESTE</button></div>`;
@@ -417,18 +416,17 @@ function renderCart(){
       firstPanel=`<div class="note"><b>Cobrança de TESTE aguardando pagamento.</b><br>Total: ${money(first.amount)}<br><button class="secondary" onclick="openTestCheckout('${cid}')">Abrir checkout de TESTE novamente</button></div>`;
     }else if(first?.environment==='test'&&first.status==='paid'){
       firstPanel=`<div class="note"><b>Pagamento de TESTE aprovado.</b><br>Crédito de teste: ${money(first.base_amount)}<br>As próximas peças estão liberadas nesta sacolinha de teste.</div>`;
-      if(isLinkRemovalTest&&balance>0&&balancePayment?.status==='pending'){
-        firstPanel+=`<div class="note"><b>Cobrança de saldo de TESTE criada — NÃO PAGAR.</b><br>Link de teste ativo para ${money(balancePayment.amount)}. Remova a peça para substituir o link e recalcular o saldo.</div>`;
-      }else if(isLinkRemovalTest&&balance>0){
-        firstPanel+=`<div class="note"><b>Saldo de teste: ${money(balance)}</b><br>Gere uma cobrança de sandbox para testar a retirada e o recálculo. Nenhum pagamento real será solicitado.<br><button onclick="createTestBagBalanceCheckout('${cid}')">Gerar cobrança de saldo de TESTE (não pagar)</button></div>`;
-      }
+
     }else{
       firstPanel='<div class="note"><b>Sacolinha reservada para testes.</b><br>Não gere cobranças de produção para esta cliente.</div>';
     }
+  }else if(meta?.firstPaymentCombinedAt){
+    firstPanel='<div class="note"><b>Pagamento combinado autorizado pela Garimpeira.</b><br>A cliente está liberada para continuar comprando. O combinado não representa pagamento recebido.</div>';
+    if(balance>0)firstPanel+='<div class="note"><b>Valor ainda a receber: '+money(balance)+'</b><br>Depois de conferir o Pix ou outro pagamento fora do sistema, registre o recebimento para finalizar a sacolinha.<br><button onclick="registerExternalBagPayment(\''+cid+'\')">Pagamento concluído externamente e finalizar</button></div>';
   }else if(items.length===1&&!first){
-    firstPanel=`<div class="note"><b>Primeira peça: pagamento obrigatório.</b><br>Escolha a forma informada pela cliente durante a live. As próximas peças só serão liberadas após a aprovação do Mercado Pago.<div class="formgrid"><div class="field"><label for="firstPayMethod">Forma de pagamento</label><select id="firstPayMethod"><option value="pix">Pix</option><option value="card">Cartão de crédito</option></select></div></div><button onclick="createFirstItemCheckout('${cid}')">Gerar cobrança e abrir WhatsApp</button></div>`;
+    firstPanel=`<div class="note"><b>Primeira peça: pagamento obrigatório.</b><br>A cliente recebe a orientação automática e deve pagar esta peça para continuar comprando. Se você combinar o pagamento para depois, autorize abaixo.<div class="formgrid"><div class="field"><label for="firstPayMethod">Forma de pagamento</label><select id="firstPayMethod"><option value="pix">Pix</option><option value="card">Cartão de crédito</option></select></div></div><button onclick="createFirstItemCheckout('${cid}')">Gerar link da primeira peça e abrir WhatsApp</button> <button class="secondary" onclick="setFirstPaymentCombined('${cid}')">Autorizar pagamento combinado</button></div>`;
   }else if(first?.status==='pending'){
-    firstPanel=`<div class="note"><b>Primeira peça aguardando pagamento.</b><br>Peça: ${money(first.base_amount)} • Taxa de processamento: ${money(first.fee_amount)} • Total do link: ${money(first.amount)}<br>Forma: ${first.method==='card'?'Cartão de crédito':'Pix'}<br><button class="secondary" onclick="sendFirstPaymentWhatsApp('${cid}')">Abrir WhatsApp com o link novamente</button></div>`;
+    firstPanel=`<div class="note"><b>Primeira peça aguardando pagamento.</b><br>Peça: ${money(first.base_amount)} • Taxa de processamento: ${money(first.fee_amount)} • Total do link: ${money(first.amount)}<br>Forma: ${first.method==='card'?'Cartão de crédito':'Pix'}<br><button class="secondary" onclick="sendFirstPaymentWhatsApp('${cid}')">Abrir WhatsApp com o link novamente</button> <button class="secondary" onclick="setFirstPaymentCombined('${cid}')">Autorizar pagamento combinado</button></div>`;
   }else if(first?.status==='paid'){
     firstPanel=`<div class="note"><b>Primeira peça paga e aprovada.</b><br>Crédito da peça já pago: ${money(first.base_amount)} • Taxa de processamento já paga: ${money(first.fee_amount)}<br>As próximas peças estão liberadas. Saldo das peças: ${money(balance)}.</div>`;
     if(meta?.lateSupersededPayments?.length){
@@ -436,12 +434,12 @@ function renderCart(){
     }else if(balance>0&&balancePayment?.status==='pending'){
       firstPanel+=`<div class="note"><b>Cobrança Pix do saldo enviada, aguardando aprovação.</b><br>Valor do Pix: ${money(balancePayment.amount)}<br>Vencimento: ${balancePayment.due_at?new Date(balancePayment.due_at).toLocaleString('pt-BR'):'15h do próximo dia'}<br><button class="secondary" onclick="sendBagBalanceWhatsApp('${cid}')">Abrir WhatsApp com a cobrança novamente</button></div>`;
     }else if(balance>0){
-      firstPanel+=`<div class="note"><b>Saldo restante das peças: ${money(balance)}</b>${Number(meta?.balancePaid||0)>0?'<br>Pagamentos adicionais já conferidos: '+money(meta.balancePaid):''}<br><button onclick="createBagBalanceCheckout('${cid}')">Gerar cobrança Pix do saldo e abrir WhatsApp</button> <button class="secondary" onclick="registerManualCardPayment('${cid}')">Registrar cartão pago por link externo</button><p class="small-muted">Se a cliente escolher cartão, envie seu link do Mercado Pago por fora e registre aqui somente depois de conferir o recebimento.</p></div>`;
+      firstPanel+=`<div class="note"><b>Saldo restante das peças: ${money(balance)}</b>${Number(meta?.balancePaid||0)>0?'<br>Pagamentos adicionais já conferidos: '+money(meta.balancePaid):''}<br>Envie a cobrança diretamente pelo WhatsApp. Depois de conferir o recebimento, registre abaixo.<br><button onclick="registerExternalBagPayment('${cid}')">Pagamento concluído externamente e finalizar</button></div>`;
     }else{
       firstPanel+=`<div class="note">A sacolinha já está totalmente quitada. Todos os pagamentos foram conferidos.</div>`;
     }
   }else if(first?.status==='failed'||first?.status==='cancelled'){
-    firstPanel=`<div class="note">A cobrança anterior não foi concluída. Gere uma nova cobrança para liberar as próximas peças.</div><div class="formgrid"><div class="field"><label for="firstPayMethod">Forma de pagamento</label><select id="firstPayMethod"><option value="pix">Pix</option><option value="card">Cartão de crédito</option></select></div></div><button onclick="createFirstItemCheckout('${cid}')">Gerar nova cobrança e abrir WhatsApp</button>`;
+    firstPanel=`<div class="note">A cobrança anterior não foi concluída. Gere um novo link ou autorize pagamento combinado.</div><div class="formgrid"><div class="field"><label for="firstPayMethod">Forma de pagamento</label><select id="firstPayMethod"><option value="pix">Pix</option><option value="card">Cartão de crédito</option></select></div></div><button onclick="createFirstItemCheckout('${cid}')">Gerar novo link da primeira peça</button> <button class="secondary" onclick="setFirstPaymentCombined('${cid}')">Autorizar pagamento combinado</button>`;
   }
   el('cart').innerHTML=(rows||'<div class="empty">Esta sacolinha está vazia.</div>')+
     `<div class="statline"><span>Subtotal</span><b>${money(subtotal)}</b></div><div class="statline"><span>Desconto administrativo</span><b>${money(discount)}</b></div><div class="statline"><b>Total das peças</b><b>${money(total)}</b></div>`+
@@ -483,16 +481,6 @@ async function createTestFirstItemCheckout(customerId){
   if(checkoutWindow)checkoutWindow.location.href=url;
   else window.open(url,'_blank','noopener');
 }
-async function createTestBagBalanceCheckout(customerId){
-  const meta=db.bagMeta[customerId],customer=db.clients.find(c=>c.id===customerId);
-  if(!meta?.id||!customer)return alert('Não encontrei a sacolinha de teste.');
-  if((customer.name||'').trim().toLowerCase()!=='teste retirada link - não pagar')return alert('Esta função é exclusiva da sacolinha de teste de retirada.');
-  if(meta.balancePayment?.status==='pending')return alert('Já existe uma cobrança de teste pendente. Não gere outra.');
-  const {data,error}=await sb.functions.invoke('admin-create-test-bag-balance-checkout',{body:{bag_id:meta.id}});
-  if(error||data?.error||!data?.preference_id)return alert(data?.error||error?.message||'Não foi possível gerar a cobrança de teste.');
-  await loadCloud();
-  alert('Cobrança de TESTE criada no Mercado Pago. Valor: '+money(data.amount)+'.\\n\\nNão pague este link. Agora podemos testar a retirada de uma peça e a invalidação da cobrança antiga.');
-}
 async function createFirstItemCheckout(customerId){
   const meta=db.bagMeta[customerId],customer=db.clients.find(c=>c.id===customerId),method=el('firstPayMethod')?.value;
   if(!meta?.id||!customer)return alert('Não encontrei a sacolinha ou a cliente.');
@@ -508,34 +496,6 @@ async function createFirstItemCheckout(customerId){
   const message=firstPaymentMessage(customer,fresh);
   if(wa)wa.location.href='https://wa.me/'+normalizeWhatsapp(customer.phone)+'?text='+encodeURIComponent(message);
   else alert('Cobrança criada. Link: '+fresh.checkout_url+'\\nAbra o WhatsApp da cliente e envie manualmente.');
-}
-function balancePaymentMessage(customer,meta,items,payment){
-  const discount=Number(meta.discount||0);
-  const list=items.map(i=>'• '+i.description+' ('+i.size+'): '+money(i.price)).join('\n');
-  const hour=Number(new Intl.DateTimeFormat('pt-BR',{hour:'2-digit',hour12:false}).format(new Date()));
-  const greeting=hour<12?'Bom dia':hour<18?'Boa tarde':'Boa noite';
-  return greeting+', '+customer.name+'! 🤍\n\nSegue a notinha da sua compra na Garimpeira de Cabide:\n\n'+list+(discount>0?'\n\nDesconto: − '+money(discount):'')+'\n\nTotal para pagamento: '+money(payment.amount)+(meta.supersededPayments?.length?'\n\nSe recebeu outro link anteriormente, desconsidere-o e utilize somente este.':'')+'\n\nPara concluir sua compra, é só realizar o pagamento pelo link abaixo:\n'+payment.checkout_url+'\n\nMuito obrigada por garimpar com a gente! 🤍';
-}
-
-function sendBagBalanceWhatsApp(customerId){
-  const meta=db.bagMeta[customerId],payment=meta?.balancePayment,customer=db.clients.find(c=>c.id===customerId),items=db.bags[customerId]||[];
-  if(!payment?.checkout_url||!customer?.phone)return alert('Não encontrei o link ou o WhatsApp cadastrado desta cliente.');
-  window.open('https://wa.me/'+normalizeWhatsapp(customer.phone)+'?text='+encodeURIComponent(balancePaymentMessage(customer,meta,items,payment)),'_blank');
-}
-async function createBagBalanceCheckout(customerId){
-  const meta=db.bagMeta[customerId],customer=db.clients.find(c=>c.id===customerId);
-  if(!meta?.id||!customer)return alert('Não encontrei a sacolinha ou a cliente.');
-  if(!customer.phone)return alert('Cadastre o WhatsApp da cliente antes de enviar a cobrança.');
-  if(meta.balancePayment?.status==='pending')return alert('Já existe uma cobrança Pix pendente para esta sacolinha.');
-  const wa=window.open('about:blank','_blank');
-  const {data,error}=await sb.functions.invoke('admin-create-bag-balance-checkout',{body:{bag_id:meta.id,method:'pix'}});
-  if(error||data?.error||!data?.init_point){if(wa)wa.close();return alert(data?.error||error?.message||'Não foi possível gerar a cobrança do saldo.');}
-  await loadCloud();
-  const fresh=db.bagMeta[customerId]?.balancePayment;
-  if(!fresh?.checkout_url){if(wa)wa.close();return alert('O link foi criado, mas não apareceu no painel. Atualize e confira a cobrança antes de enviar.');}
-  const message=balancePaymentMessage(customer,db.bagMeta[customerId],db.bags[customerId]||[],fresh);
-  if(wa)wa.location.href='https://wa.me/'+normalizeWhatsapp(customer.phone)+'?text='+encodeURIComponent(message);
-  else alert('Cobrança criada. Link: '+fresh.checkout_url+'\nAbra o WhatsApp da cliente e envie manualmente.');
 }
 function parseMoneyInput(value){const s=String(value).trim().replaceAll(' ','');return Number(s.includes(',')?s.split('.').join('').replace(',','.'):s);}
 async function setBagDiscount(customerId){
@@ -553,33 +513,33 @@ async function setBagDiscount(customerId){
   if(error)return reportError(error,'Não foi possível registrar o desconto.');
   await loadCloud();alert('Desconto administrativo registrado: '+money(amount)+'.');
 }
-async function registerManualCardPayment(customerId){
-  const meta=db.bagMeta[customerId],items=db.bags[customerId]||[];
-  if(!meta?.id||!items.length)return alert('Não encontrei uma sacolinha com peças.');
-  if(meta.firstPayment?.status!=='paid')return alert('A primeira peça precisa estar paga e aprovada.');
-  if(meta.balancePayment?.status==='pending')return alert('Existe uma cobrança Pix pendente. Aguarde a aprovação antes de registrar o cartão.');
-  const subtotal=items.reduce((sum,item)=>sum+Number(item.price||0),0);
-  const total=Math.max(0,subtotal-Number(meta.discount||0));
-  const firstPaid=meta.firstPayment?.status==='paid'?Number(meta.firstPayment.base_amount||0):0;
-  const balance=Math.max(0,total-firstPaid-Number(meta.balancePaid||0));
-  if(balance<=0)return alert('Esta sacolinha já está quitada.');
-  const rate=Number(db.paymentSettings?.card_fee_percent||0);
-  if(rate<=0||rate>=100)return alert('Confira a taxa de processamento do cartão nas configurações.');
-  const expected=Math.round((balance/(1-rate/100))*100)/100;
-  const raw=prompt('Depois de conferir o recebimento no Mercado Pago, informe o valor cobrado no link externo, antes dos juros do parcelamento.\n\nSaldo das peças: '+money(balance)+'\nValor aproximado do link para quitar tudo (inclui processamento de '+rate.toLocaleString('pt-BR')+'%): '+money(expected)+'\n\nPara pagamento parcial, informe o valor correspondente do link:');
-  if(raw===null)return;
-  const charged=parseMoneyInput(raw);
-  if(!Number.isFinite(charged)||charged<=0)return alert('Informe um valor válido.');
-  const applied=Math.round(charged*(1-rate/100)*100)/100;
-  if(applied>balance)return alert('Esse valor ultrapassa o saldo das peças. Confira o valor do link.');
-  const remaining=Math.max(0,balance-applied);
-  if(!confirm('Confirme que o pagamento já aparece como recebido na sua conta Mercado Pago.\n\nValor do link (antes dos juros do parcelamento): '+money(charged)+'\nValor abatido do saldo das peças: '+money(applied)+'\nSaldo que continuará pendente: '+money(remaining)+'\n\nRegistrar pagamento por cartão?'))return;
-  const {data,error}=await sb.rpc('admin_register_manual_card_payment',{p_bag_id:meta.id,p_card_amount:charged});
-  if(error)return reportError(error,'Não foi possível registrar o pagamento por cartão.');
-  await loadCloud();
-  const closed=Array.isArray(data)?data[0]?.bag_closed:false;
-  alert(closed?'Pagamento conferido e sacolinha finalizada.':'Pagamento por cartão registrado. O saldo restante continua pendente.');
+async function setFirstPaymentCombined(customerId){
+ const meta=db.bagMeta[customerId],items=db.bags[customerId]||[];
+ if(!meta?.id||!items.length)return alert('Adicione a primeira peça antes de autorizar pagamento combinado.');
+ if(meta.firstPayment?.status==='paid')return alert('A primeira peça já está paga.');
+ if(!confirm('Autorizar pagamento combinado para esta cliente? Ela poderá continuar comprando sem que o sistema registre a primeira peça como paga.'))return;
+ const {error}=await sb.rpc('admin_set_first_payment_combined',{p_bag_id:meta.id});
+ if(error)return reportError(error,'Não foi possível autorizar o pagamento combinado.');
+ await loadCloud();alert('Pagamento combinado autorizado. A cliente já pode continuar comprando.');
 }
+async function registerExternalBagPayment(customerId){
+ const meta=db.bagMeta[customerId],items=db.bags[customerId]||[];
+ if(!meta?.id||!items.length)return alert('Não encontrei uma sacolinha aberta com peças.');
+ const subtotal=items.reduce((sum,item)=>sum+Number(item.price||0),0),total=Math.max(0,subtotal-Number(meta.discount||0));
+ const firstPaid=meta.firstPayment?.status==='paid'?Number(meta.firstPayment.base_amount||0):0;
+ const due=Math.max(0,total-firstPaid-Number(meta.balancePaid||0));if(due<=0)return alert('Esta sacolinha já está quitada.');
+ const rawMethod=prompt('Forma recebida: digite PIX, CARTAO ou DINHEIRO.','PIX');if(rawMethod===null)return;
+ const key=rawMethod.trim().toLocaleLowerCase('pt-BR'),method=key==='pix'?'pix':(key==='cartao'||key==='cartão')?'card':key==='dinheiro'?'cash':null;
+ if(!method)return alert('Forma inválida. Use PIX, CARTAO ou DINHEIRO.');
+ const rawAmount=prompt('Confirme o valor recebido. Para finalizar, precisa quitar exatamente '+money(due)+'.',due.toFixed(2).replace('.',','));if(rawAmount===null)return;
+ const amount=parseMoneyInput(rawAmount);if(!Number.isFinite(amount)||amount<=0)return alert('Informe um valor válido.');
+ if(Math.round(amount*100)!==Math.round(due*100))return alert('O valor precisa ser exatamente '+money(due)+'. Pagamentos parciais não finalizam a sacolinha.');
+ if(!confirm('Confirma que recebeu '+money(due)+' por '+(method==='pix'?'Pix':method==='card'?'cartão':'dinheiro')+' fora do Garimpeira PDV? Ao confirmar, o pagamento será registrado, o estoque será baixado e a sacolinha será finalizada.'))return;
+ const {error}=await sb.rpc('admin_register_external_bag_payment',{p_bag_id:meta.id,p_amount:amount,p_method:method});
+ if(error)return reportError(error,'Não foi possível registrar o pagamento externo.');
+ await loadCloud();alert('Pagamento externo registrado e sacolinha finalizada. Estoque e histórico atualizados.');
+}
+
 async function closeBag(customerId){
   const meta=db.bagMeta[customerId],items=db.bags[customerId]||[];
   if(!meta||!items.length)return alert('A sacolinha está vazia.');
