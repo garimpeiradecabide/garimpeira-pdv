@@ -412,7 +412,20 @@ function render(){
 function renderClients(){
   const q=(el('clientSearch').value||'').toLowerCase();
   el('clientList').innerHTML=db.clients.filter(c=>(c.name+' '+c.phone).toLowerCase().includes(q))
-    .map(c=>`<div class="statline"><span><b>${esc(c.name)}</b><br><small>${esc(c.phone)} • ${c.authUserId?'Acesso ativo':'Sem acesso ao portal'}</small></span><button class="secondary" onclick="generateCustomerAccess('${c.id}')">${c.authUserId?'Gerar nova senha':'Gerar acesso'}</button></div>`).join('')||'<div class="empty">Nenhuma cliente cadastrada.</div>';
+    .map(c=>`<div class="statline"><span><b>${esc(c.name)}</b><br><small>${esc(c.phone)} • ${c.authUserId?'Acesso ativo':'Sem acesso ao portal'}</small></span><div class="row"><button class="secondary" onclick="editClientName('${c.id}')">Editar nome</button><button class="secondary" onclick="generateCustomerAccess('${c.id}')">${c.authUserId?'Gerar nova senha':'Gerar acesso'}</button></div></div>`).join('')||'<div class="empty">Nenhuma cliente cadastrada.</div>';
+}
+async function editClientName(customerId){
+  const customer=db.clients.find(c=>c.id===customerId);
+  if(!customer)return alert('Cliente não encontrada.');
+  const entered=prompt('Editar nome da cliente:',customer.name);
+  if(entered===null)return;
+  const name=entered.trim();
+  if(!name)return alert('O nome não pode ficar vazio.');
+  if(name===customer.name)return;
+  const {error}=await sb.from('customers').update({name}).eq('id',customerId);
+  if(error)return reportError(error,'Não foi possível atualizar o nome da cliente.');
+  await loadCloud();
+  alert('Nome da cliente atualizado com sucesso.');
 }
 async function generateCustomerAccess(customerId){
   const customer=db.clients.find(x=>x.id===customerId);if(!customer)return;
