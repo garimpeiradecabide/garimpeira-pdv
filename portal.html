@@ -144,7 +144,7 @@ async function loadCustomerData(customer){
     const remaining=Math.max(0,total-firstCredit);
     const paymentNote=!paidFirst
       ? '<div class="note">A primeira peça precisa ser paga e aprovada para liberar novas compras. A Garimpeira enviará o link pelo WhatsApp.</div>'
-      : '<div class="line"><span>Primeira peça já paga</span><b>− '+money(firstCredit)+'</b></div><div class="line"><b>Saldo restante das peças</b><span class="total">'+money(remaining)+'</span></div><div class="note">A cobrança do saldo será enviada pela Garimpeira no WhatsApp. O prazo para pagamento é até as 15h do dia seguinte à live.</div>';
+      : '<div class="line"><span>Primeira peça já paga</span><b>− '+money(firstCredit)+'</b></div>'+(Number(firstPayment.fee_amount||0)>0?'<div class="line"><span>Taxa do cartão já paga</span><b>'+money(firstPayment.fee_amount)+'</b></div>':'')+'<div class="line"><b>Saldo restante das peças</b><span class="total">'+money(remaining)+'</span></div><div class="note">A cobrança do saldo será enviada pela Garimpeira no WhatsApp. O prazo para pagamento é até as 15h do dia seguinte à live.</div>';
     $('currentBag').innerHTML=(list.map(i=>'<div class="line"><span>'+esc(i.description_snapshot)+'<br><small class="muted">'+esc(i.size_snapshot||'')+'</small></span><b>'+money(i.price_snapshot)+'</b></div>').join('')||'<div class="empty">Sua sacolinha ainda está vazia.</div>')+
       '<div class="line"><span>Subtotal</span><b>'+money(subtotal)+'</b></div>'+
       (discount?'<div class="line"><span>Desconto concedido pela Garimpeira</span><b>− '+money(discount)+'</b></div>':'')+
