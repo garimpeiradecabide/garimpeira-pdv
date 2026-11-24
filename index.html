@@ -66,6 +66,7 @@ table{width:100%;border-collapse:collapse;margin-top:12px;background:white}th,td
     <button data-tab="suppliers" onclick="show('suppliers')">Fornecedoras</button>
     <button data-tab="stock" onclick="show('stock')">Estoque</button>
     <button data-tab="bags" onclick="show('bags')">Sacolinhas</button>
+    <button data-tab="payments" onclick="show('payments')">Pagamentos</button>
   </div>
   <section id="home" class="panel active">
     <div class="grid">
@@ -113,6 +114,12 @@ table{width:100%;border-collapse:collapse;margin-top:12px;background:white}th,td
     <div id="cart"></div><div class="note">Cada peça reservada é registrada no banco e fica vinculada à sacolinha da cliente.</div>
   </div></section>
   <section id="bags" class="panel"><div class="card"><h3>Sacolinhas permanentes</h3><div id="bagList"></div></div></section>
+  <section id="payments" class="panel"><div class="card"><h3>Configuração de recebimento Pix</h3><p class="sub">Altere a chave aqui quando ela voltar do PicPay para o Mercado Pago. A mudança será refletida no portal das clientes.</p><div class="formgrid">
+    <div class="field"><label for="pixKey">Chave Pix</label><input id="pixKey" placeholder="Chave Pix atual"></div>
+    <div class="field"><label for="pixKeyType">Tipo de chave</label><select id="pixKeyType"><option value="celular">Celular</option><option value="cpf">CPF</option><option value="cnpj">CNPJ</option><option value="email">E-mail</option><option value="aleatoria">Aleatória</option></select></div>
+    <div class="field"><label for="pixProvider">Instituição</label><input id="pixProvider" placeholder="Ex.: Mercado Pago"></div>
+    <div class="field"><label for="pixReceiver">Nome do recebedor (como aparece no banco)</label><input id="pixReceiver" placeholder="Nome do titular"></div>
+  </div><button onclick="savePaymentSettings()">Salvar dados do Pix</button><span id="pixSettingsStatus" class="small-muted"></span></div><div class="card"><h3>Conferência de pagamentos</h3><p class="sub">O sistema só registra o pagamento como recebido quando a administração confirma o recebimento. Pix por chave exige conferência no aplicativo da instituição. Cartão/Mercado Pago ainda depende da integração e da confirmação oficial da transação.</p></div></section>
 </main>
 </div>
 
@@ -121,7 +128,7 @@ table{width:100%;border-collapse:collapse;margin-top:12px;background:white}th,td
 const SUPABASE_URL = 'https://gcyuvbakxswkjcyqscth.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_haoKT8vSzAEpxwfsapBM1A_4REUsg8T';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-let db = {clients:[], suppliers:[], products:[], bags:{}, bagMeta:{}, closeRequests:{}};
+let db = {clients:[], suppliers:[], products:[], bags:{}, bagMeta:{}, closeRequests:{}, paymentSettings:null};
 let currentUser = null;
 const el = id => document.getElementById(id);
 const money = n => Number(n || 0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
@@ -154,19 +161,21 @@ el('loginForm').addEventListener('submit',async e=>{
   catch(err){console.error(err);el('loginMessage').textContent='Não foi possível entrar: '+(err.message||'verifique e-mail e senha');}
 });
 async function loadCloud(){
-  const [c,s,p,b,bi,cr]=await Promise.all([
+  const [c,s,p,b,bi,cr,ps]=await Promise.all([
     sb.from('customers').select('*').order('created_at',{ascending:false}),
     sb.from('suppliers').select('*').eq('active',true).order('name'),
     sb.from('products').select('*').order('created_at',{ascending:false}),
     sb.from('bags').select('*').eq('status','open').order('created_at',{ascending:false}),
     sb.from('bag_items').select('*').eq('status','reserved').order('added_at',{ascending:true}),
-    sb.from('bag_close_requests').select('*').eq('status','pending')
+    sb.from('bag_close_requests').select('*').eq('status','pending'),
+    sb.from('payment_settings').select('*').eq('singleton',true).maybeSingle()
   ]);
-  for(const r of [c,s,p,b,bi,cr]) if(r.error) throw r.error;
+  for(const r of [c,s,p,b,bi,cr,ps]) if(r.error) throw r.error;
   db.clients=c.data.map(x=>({id:x.id,name:x.name,phone:x.phone||'',email:x.email||'',authUserId:x.auth_user_id||null,obs:x.notes||''}));
   db.suppliers=s.data.map(x=>({id:x.id,name:x.name,phone:x.phone||'',rule:x.settlement_rule||'',notes:x.notes||''}));
   db.products=p.data.map(x=>({id:x.id,desc:x.description,short:x.short_code||'',size:x.size||'',cost:Number(x.cost||0),price:Number(x.sale_price||0),supplierId:x.supplier_id, supplier:(s.data.find(y=>y.id===x.supplier_id)||{}).name||'',type:x.acquisition_type,barcode:x.barcode||'',status:x.status==='available'?'Disponível':x.status==='reserved'?'Reservada':x.status==='sold'?'Vendida':'Baixada'}));
-  db.bags={};db.bagMeta={};db.closeRequests={};
+  db.bags={};db.bagMeta={};db.closeRequests={};db.paymentSettings=ps.data;
+  if(ps.data){el('pixKey').value=ps.data.pix_key||'';el('pixKeyType').value=ps.data.pix_key_type||'celular';el('pixProvider').value=ps.data.pix_provider||'';el('pixReceiver').value=ps.data.pix_receiver||'';}
   const bagById=new Map(b.data.map(x=>[x.id,x]));
   for(const bag of b.data){db.bags[bag.customer_id]=[];db.bagMeta[bag.customer_id]={id:bag.id,discount:Number(bag.discount_amount||0),reason:bag.discount_reason||''};}
   for(const req of cr.data){db.closeRequests[req.bag_id]=req;}
@@ -176,6 +185,13 @@ async function loadCloud(){
     db.bags[bag.customer_id].push({id:item.id,productId:item.product_id,price:Number(item.price_snapshot||0),description:item.description_snapshot||'',size:item.size_snapshot||''});
   }
   render();
+}
+async function savePaymentSettings(){
+  const payload={singleton:true,pix_key:el('pixKey').value.trim(),pix_key_type:el('pixKeyType').value,pix_provider:el('pixProvider').value.trim(),pix_receiver:el('pixReceiver').value.trim()};
+  if(!payload.pix_key||!payload.pix_provider)return alert('Informe a chave Pix e a instituição.');
+  const {error}=await sb.from('payment_settings').upsert(payload,{onConflict:'singleton'});
+  if(error)return reportError(error,'Não foi possível salvar os dados de recebimento.');
+  el('pixSettingsStatus').textContent='Dados Pix atualizados.';await loadCloud();
 }
 async function addClient(){
   const name=el('cName').value.trim(),phone=el('cPhone').value.trim();
@@ -317,7 +333,7 @@ async function closeBag(customerId){
     pix=parseMoneyInput(p);card=parseMoneyInput(k);
     if(!Number.isFinite(pix)||!Number.isFinite(card)||Math.round((pix+card)*100)!==Math.round(total*100))return alert('A soma do Pix e do cartão precisa ser igual ao total.');
   }
-  if(!confirm(`Confirmar fechamento?\nTotal: ${money(total)}\nPagamento: ${method==='pix'?'Pix':method==='card'?'Cartão':'Misto'}`))return;
+  if(!confirm(`ATENÇÃO: confirme somente depois de verificar o recebimento no aplicativo/extrato correspondente.\nTotal: ${money(total)}\nPagamento: ${method==='pix'?'Pix':method==='card'?'Cartão':'Misto'}\n\nDeseja registrar como recebido e fechar?`))return;
   const {error}=await sb.rpc('admin_close_bag',{p_bag_id:meta.id,p_method:method,p_pix_amount:pix,p_card_amount:card});
   if(error)return reportError(error,'Não foi possível fechar a sacolinha.');
   await loadCloud();alert('Sacolinha fechada e pagamento registrado.');
