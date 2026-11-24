@@ -179,8 +179,8 @@ async function loadCloud(){
     sb.from('bag_close_requests').select('*').eq('status','pending'),
     sb.from('payment_settings').select('*').eq('singleton',true).maybeSingle(),
     sb.from('payments').select('*').order('created_at',{ascending:false}),
-    sb.from('bags').select('*').eq('status','closed').order('closed_at',{ascending:false}),
-    sb.from('bag_items').select('*').eq('status','sold').order('added_at',{ascending:true})
+    sb.from('bags').select('*').order('closed_at',{ascending:false}),
+    sb.from('bag_items').select('*').order('added_at',{ascending:true})
   ]);
   for(const r of [c,s,p,b,bi,cr,ps,pay,closedBags,soldItems]) if(r.error) throw r.error;
   db.clients=c.data.map(x=>({id:x.id,name:x.name,phone:x.phone||'',email:x.email||'',authUserId:x.auth_user_id||null,obs:x.notes||''}));
