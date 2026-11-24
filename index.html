@@ -69,6 +69,7 @@ table{width:100%;border-collapse:collapse;margin-top:12px;background:white}th,td
     <button data-tab="stock" onclick="show('stock')">Estoque</button>
     <button data-tab="bags" onclick="show('bags')">Sacolinhas</button>
     <button data-tab="sales" onclick="show('sales')">Vendas concluídas</button>
+    <button data-tab="deliveries" onclick="show('deliveries')">Entregas</button>
     <button data-tab="payments" onclick="show('payments')">Pagamentos</button>
   </div>
   <section id="home" class="panel active">
@@ -119,6 +120,7 @@ table{width:100%;border-collapse:collapse;margin-top:12px;background:white}th,td
   </div></section>
   <section id="bags" class="panel"><div class="card"><h3>Solicitações de fechamento</h3><p class="sub">Pedidos enviados pelas clientes, aguardando conferência da Garimpeira.</p><div id="closeRequestList"></div></div><div class="card"><h3>Sacolinhas permanentes</h3><div id="bagList"></div></div></section>
   <section id="sales" class="panel"><div class="card"><h3>Histórico de vendas concluídas</h3><p class="sub">Consulte compras finalizadas, peças, valores e pagamentos registrados. O histórico permanece aqui mesmo depois que a sacolinha sai da tela de vendas ao vivo.</p><input id="salesSearch" placeholder="Buscar por cliente ou telefone..." oninput="renderSales()"><div id="salesList"></div></div></section>
+  <section id="deliveries" class="panel"><div class="card"><h3>Solicitações de entrega</h3><p class="sub">Pedidos enviados pelas clientes pelo portal. Aceite a solicitação e combine valor e pagamento diretamente pelo WhatsApp. O frete não é cobrado pelo sistema.</p><div id="deliveryRequestList"></div></div></section>
   <section id="payments" class="panel"><div class="card"><h3>Configurações de recebimento e taxas</h3><p class="sub">Altere a chave aqui quando ela voltar do PicPay para o Mercado Pago. A mudança será refletida no portal das clientes.</p><div class="formgrid">
     <div class="field"><label for="pixKey">Chave Pix manual</label><input id="pixKey" placeholder="Chave Pix atual"></div>
     <div class="field"><label for="pixKeyType">Tipo de chave</label><select id="pixKeyType"><option value="celular">Celular</option><option value="cpf">CPF</option><option value="cnpj">CNPJ</option><option value="email">E-mail</option><option value="aleatoria">Aleatória</option></select></div>
@@ -134,7 +136,7 @@ table{width:100%;border-collapse:collapse;margin-top:12px;background:white}th,td
 const SUPABASE_URL = 'https://gcyuvbakxswkjcyqscth.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_haoKT8vSzAEpxwfsapBM1A_4REUsg8T';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-let db = {clients:[], suppliers:[], products:[], bags:{}, bagMeta:{}, closeRequests:{}, paymentSettings:null, payments:[], sales:[]};
+let db = {clients:[], suppliers:[], products:[], bags:{}, bagMeta:{}, closeRequests:{}, paymentSettings:null, payments:[], sales:[], deliveries:[]};
 let currentUser = null;
 let cameraScanner = null;
 let cameraTarget = null;
@@ -170,7 +172,7 @@ el('loginForm').addEventListener('submit',async e=>{
   catch(err){console.error(err);el('loginMessage').textContent='Não foi possível entrar: '+(err.message||'verifique e-mail e senha');}
 });
 async function loadCloud(){
-  const [c,s,p,b,bi,cr,ps,pay,closedBags,soldItems]=await Promise.all([
+  const [c,s,p,b,bi,cr,ps,pay,closedBags,soldItems,deliveryRows]=await Promise.all([
     sb.from('customers').select('*').order('created_at',{ascending:false}),
     sb.from('suppliers').select('*').eq('active',true).order('name'),
     sb.from('products').select('*').order('created_at',{ascending:false}),
@@ -180,9 +182,10 @@ async function loadCloud(){
     sb.from('payment_settings').select('*').eq('singleton',true).maybeSingle(),
     sb.from('payments').select('*').order('created_at',{ascending:false}),
     sb.from('bags').select('*').order('closed_at',{ascending:false}),
-    sb.from('bag_items').select('*').order('added_at',{ascending:true})
+    sb.from('bag_items').select('*').order('added_at',{ascending:true}),
+    sb.from('deliveries').select('*').order('created_at',{ascending:false})
   ]);
-  for(const r of [c,s,p,b,bi,cr,ps,pay,closedBags,soldItems]) if(r.error) throw r.error;
+  for(const r of [c,s,p,b,bi,cr,ps,pay,closedBags,soldItems,deliveryRows]) if(r.error) throw r.error;
   db.clients=c.data.map(x=>({id:x.id,name:x.name,phone:x.phone||'',email:x.email||'',authUserId:x.auth_user_id||null,obs:x.notes||''}));
   db.suppliers=s.data.map(x=>({id:x.id,name:x.name,phone:x.phone||'',rule:x.settlement_rule||'',notes:x.notes||''}));
   db.products=p.data.map(x=>({id:x.id,desc:x.description,short:x.short_code||'',size:x.size||'',cost:Number(x.cost||0),price:Number(x.sale_price||0),supplierId:x.supplier_id,supplier:(s.data.find(y=>y.id===x.supplier_id)||{}).name||'',type:x.acquisition_type,barcode:x.barcode||'',status:x.status==='available'?'Disponível':x.status==='reserved'?'Reservada':x.status==='sold'?'Vendida':'Baixada'}));
@@ -195,6 +198,7 @@ async function loadCloud(){
       description:item.description_snapshot||'Peça',size:item.size_snapshot||'',price:Number(item.price_snapshot||0),status:item.status
     }))
   })).filter(sale=>sale.items.length>0);
+  db.deliveries=(deliveryRows.data||[]).map(row=>({...row,customerId:(closedBags.data||[]).find(bag=>bag.id===row.bag_id)?.customer_id||null}));
   if(ps.data){el('pixKey').value=ps.data.pix_key||'';el('pixKeyType').value=ps.data.pix_key_type||'celular';el('pixProvider').value=ps.data.pix_provider||'';el('pixReceiver').value=ps.data.pix_receiver||'';el('pixFeePercent').value=ps.data.pix_fee_percent??'0.99';el('cardFeePercent').value=ps.data.card_fee_percent??'';}
   const bagById=new Map(b.data.map(x=>[x.id,x]));
   for(const bag of b.data){
@@ -337,7 +341,7 @@ function render(){
   el('mClients').textContent=db.clients.length;el('mProducts').textContent=db.products.length;
   el('mAvailable').textContent=db.products.filter(p=>p.status==='Disponível').length;
   el('mBags').textContent=Object.values(db.bags).filter(a=>a.length).length;
-  renderClients();renderSuppliers();renderProducts();renderStock();renderSelectors();renderCart();renderBags();renderCloseRequests();renderSales();
+  renderClients();renderSuppliers();renderProducts();renderStock();renderSelectors();renderCart();renderBags();renderCloseRequests();renderSales();renderDeliveryRequests();
 }
 function renderClients(){
   const q=(el('clientSearch').value||'').toLowerCase();
@@ -609,6 +613,29 @@ async function openCloseRequest(bagId){
   alert('Solicitação de '+(customer?.name||'cliente')+'\nForma escolhida: '+method+'\nPeças reservadas: '+items.length+'\n\nConfira os itens e o pagamento antes de fechar. A confirmação final deve ser feita em Venda ao vivo, no botão de fechar sacolinha.');
   if(cid){el('liveClient').value=cid;show('live');}
 }
+
+function renderDeliveryRequests(){
+  const labels={requested_moto:'Solicitou moto entrega',requested_shipping:'Solicitou simulação de frete',accepted:'Solicitação aceita',delivered:'Entregue',preparing:'Em preparação',shipped:'Enviado / em rota'};
+  const rows=db.deliveries||[];
+  el('deliveryRequestList').innerHTML=rows.length?rows.map(d=>{
+    const customer=db.clients.find(c=>c.id===d.customerId);
+    const phone=String(customer?.phone||'').replaceAll('(','').replaceAll(')','').replaceAll('-','').replaceAll(' ','');
+    const chat=phone?"<a target='_blank' rel='noopener' href='https://wa.me/55"+phone+"'>Conversar no WhatsApp</a>":'';
+    const date=d.created_at?new Date(d.created_at).toLocaleString('pt-BR'):'';
+    let action='';
+    if(d.status==='requested_moto'||d.status==='requested_shipping')action="<button onclick='updateDeliveryRequest(&quot;"+d.id+"&quot;,&quot;accepted&quot;)'>Aceitar solicitação</button>";
+    else if(d.status==='accepted')action="<button class='secondary' onclick='updateDeliveryRequest(&quot;"+d.id+"&quot;,&quot;delivered&quot;)'>Marcar como entregue</button>";
+    return "<div class='card' style='margin:12px 0'><div class='row between'><div><b>"+esc(customer?.name||'Cliente não identificada')+"</b><br><small class='small-muted'>"+esc(customer?.phone||'Telefone não cadastrado')+" • "+date+"</small></div><span class='pill'>"+esc(labels[d.status]||d.status)+"</span></div><p>"+esc(d.status==='requested_moto'?'A cliente quer combinar uma entrega por moto.':d.status==='requested_shipping'?'A cliente pediu uma simulação de frete.':'Solicitação registrada no portal.')+"</p><div class='row'>"+chat+action+"</div></div>";
+  }).join(''):'<div class="empty">Nenhuma solicitação de entrega no momento.</div>';
+}
+async function updateDeliveryRequest(id,status){
+  const label=status==='accepted'?'aceitar esta solicitação':'marcar esta entrega como concluída';
+  if(!confirm('Deseja '+label+'?'))return;
+  const {error}=await sb.from('deliveries').update({status}).eq('id',id);
+  if(error){alert('Não foi possível atualizar: '+error.message);return}
+  await loadCloud();render();
+}
+
 function renderSales(){
   const query=(el('salesSearch')?.value||'').trim().toLocaleLowerCase('pt-BR');
   const rows=(db.sales||[]).filter(sale=>{
