@@ -346,6 +346,22 @@ function sendFirstPaymentWhatsApp(customerId){
   if(!first?.checkout_url||!customer?.phone)return alert('Não encontrei o link ou o WhatsApp cadastrado desta cliente.');
   window.open('https://wa.me/'+normalizeWhatsapp(customer.phone)+'?text='+encodeURIComponent(firstPaymentMessage(customer,first)),'_blank');
 }
+async function createFirstItemCheckout(customerId){
+  const meta=db.bagMeta[customerId],customer=db.clients.find(c=>c.id===customerId),method=el('firstPayMethod')?.value;
+  if(!meta?.id||!customer)return alert('Não encontrei a sacolinha ou a cliente.');
+  if(!customer.phone)return alert('Cadastre o WhatsApp da cliente antes de enviar a cobrança.');
+  if(!['pix','card'].includes(method))return alert('Escolha Pix ou cartão.');
+  if(method==='card'&&!(Number(db.paymentSettings?.card_fee_percent)>0))return alert('Configure a taxa efetiva do cartão na aba Pagamentos antes de gerar a cobrança.');
+  const wa=window.open('about:blank','_blank');
+  const {data,error}=await sb.functions.invoke('admin-create-first-item-checkout',{body:{bag_id:meta.id,method}});
+  if(error||data?.error||!data?.init_point){if(wa)wa.close();return alert(data?.error||error?.message||'Não foi possível gerar a cobrança.');}
+  await loadCloud();
+  const fresh=db.bagMeta[customerId]?.firstPayment;
+  if(!fresh?.checkout_url){if(wa)wa.close();return alert('O link foi criado, mas não apareceu no painel. Atualize e confira a cobrança antes de enviar.');}
+  const message=firstPaymentMessage(customer,fresh);
+  if(wa)wa.location.href='https://wa.me/'+normalizeWhatsapp(customer.phone)+'?text='+encodeURIComponent(message);
+  else alert('Cobrança criada. Link: '+fresh.checkout_url+'\\nAbra o WhatsApp da cliente e envie manualmente.');
+}
 function balancePaymentMessage(customer,meta,items,payment){
   const subtotal=items.reduce((sum,item)=>sum+Number(item.price||0),0);
   const total=Math.max(0,subtotal-Number(meta.discount||0));
