@@ -71,6 +71,7 @@ table{width:100%;border-collapse:collapse;margin-top:12px;background:white}th,td
     <button data-tab="bags" onclick="show('bags')">Sacolinhas</button>
     <button data-tab="sales" onclick="show('sales')">Vendas concluídas</button>
     <button data-tab="deliveries" onclick="show('deliveries')">Entregas</button>
+    <button data-tab="results" onclick="show(&quot;results&quot;)">Lucros e resultados</button>
     <button data-tab="payments" onclick="show('payments')">Pagamentos</button>
   </div>
   <section id="home" class="panel active">
@@ -95,7 +96,7 @@ table{width:100%;border-collapse:collapse;margin-top:12px;background:white}th,td
       <div class="field"><label for="sName">Nome</label><input id="sName" placeholder="Nome da fornecedora"></div>
       <div class="field"><label for="sPhone">Telefone / WhatsApp</label><input id="sPhone" placeholder="Contato"></div>
       <div class="field"><label for="sRule">Regra de acerto da consignação</label><select id="sRule"><option>Por peça vendida</option><option>Semanal</option><option>Quinzenal</option><option>Mensal</option><option>Personalizado</option></select></div>
-    </div><button onclick="addSupplier()">Salvar fornecedora</button><div id="supplierList"></div>
+    </div><button onclick="addSupplier()">Salvar fornecedora</button><div id="supplierList"></div><h3>Vendas, repasses e pagamentos por fornecedora</h3><div id="supplierFinanceList"></div>
   </div></section>
   <section id="products" class="panel"><div class="card">
     <h3>Cadastro de produtos</h3><div class="formgrid">
@@ -110,7 +111,7 @@ table{width:100%;border-collapse:collapse;margin-top:12px;background:white}th,td
     </div><button onclick="addProduct()">Salvar produto e gerar etiqueta</button><div id="productList"></div>
   </div></section>
   <section id="stock" class="panel"><div class="card"><h3>Estoque e movimentações</h3><div id="stockList"></div></div></section>
-  <section id="live" class="panel"><div class="card">
+  <section id="live" class="panel"><div class="card"><h3>Controle da live</h3><div id="liveSessionControls"></div><div class="formgrid"><div class="field"><label for="liveTitle">Nome desta live</label><input id="liveTitle" placeholder="Ex.: Live de terça • novidades"></div><div class="field"><label for="livePlatform">Plataforma</label><select id="livePlatform"><option value="Facebook">Facebook</option><option value="TikTok">TikTok</option><option value="Instagram">Instagram</option><option value="WhatsApp">WhatsApp</option><option value="Outra">Outra</option></select></div></div><div class="row"><button onclick="startLiveSession()">Iniciar live</button><button class="secondary" onclick="endLiveSession()">Encerrar live atual</button></div><p class="small-muted">Inicie a live antes de começar a bipar as peças. Assim cada venda ficará vinculada ao resultado daquela live.</p></div><div class="card">
     <h3>Frente de caixa • venda ao vivo</h3><div class="formgrid">
       <div class="field"><label for="liveClientSearch">Buscar cliente pelo nome</label><input id="liveClientSearch" placeholder="Digite o nome: Ana, Maria, Mara..." oninput="filterLiveClients()"><label for="liveClient">Cliente selecionada</label><select id="liveClient" onchange="renderCart()"></select></div>
       <div class="field"><label for="scan">Código de barras da peça</label><input id="scan" inputmode="numeric" placeholder="Leia com a câmera ou digite o código" onkeydown="if(event.key==='Enter'){event.preventDefault();scanProduct()}"><button type="button" class="secondary" style="margin-top:6px;width:100%" onclick="openCameraScan('live')">📷 Bipar com a câmera do celular</button></div>
@@ -122,6 +123,7 @@ table{width:100%;border-collapse:collapse;margin-top:12px;background:white}th,td
   <section id="bags" class="panel"><div class="card"><h3>Solicitações de fechamento</h3><p class="sub">Pedidos enviados pelas clientes, aguardando conferência da Garimpeira.</p><div id="closeRequestList"></div></div><div class="card"><h3>Sacolinhas permanentes</h3><div id="bagList"></div></div></section>
   <section id="sales" class="panel"><div class="card"><h3>Histórico de vendas concluídas</h3><p class="sub">Consulte compras finalizadas, peças, valores e pagamentos registrados. O histórico permanece aqui mesmo depois que a sacolinha sai da tela de vendas ao vivo.</p><input id="salesSearch" placeholder="Buscar por cliente ou telefone..." oninput="renderSales()"><div id="salesList"></div></div></section>
   <section id="deliveries" class="panel"><div class="card"><h3>Solicitações de entrega</h3><p class="sub">Pedidos enviados pelas clientes pelo portal. Aceite a solicitação e combine valor e pagamento diretamente pelo WhatsApp. O frete não é cobrado pelo sistema.</p><div id="deliveryRequestList"></div></div></section>
+  <section id="results" class="panel"><div class="card"><h3>Lucros e resultados</h3><p class="sub">Acompanhe vendas líquidas, custo/repasse, lucro bruto e valores efetivamente recebidos.</p><div class="formgrid"><div class="field"><label for="reportMode">Período do relatório</label><select id="reportMode" onchange="renderResults()"><option value="month">Por mês</option><option value="week">Por semana</option><option value="live">Por live</option></select></div><div class="field" id="reportMonthField"><label for="reportMonth">Mês</label><input id="reportMonth" type="month" onchange="renderResults()"></div><div class="field" id="reportWeekField" style="display:none"><label for="reportWeekDate">Escolha um dia da semana</label><input id="reportWeekDate" type="date" onchange="renderResults()"></div><div class="field" id="reportLiveField" style="display:none"><label for="reportLiveSession">Live</label><select id="reportLiveSession" onchange="renderResults()"></select></div></div><div id="reportSummary" class="grid"></div><div id="reportDetails"></div><p class="small-muted">Lucro bruto = venda líquida menos custo das peças compradas ou repasse das consignadas. Não desconta despesas fixas da loja. O valor recebido considera somente pagamentos confirmados.</p></div></section>
   <section id="payments" class="panel"><div class="card"><h3>Configurações de recebimento e taxas</h3><p class="sub">Altere a chave aqui quando ela voltar do PicPay para o Mercado Pago. A mudança será refletida no portal das clientes.</p><div class="formgrid">
     <div class="field"><label for="pixKey">Chave Pix manual</label><input id="pixKey" placeholder="Chave Pix atual"></div>
     <div class="field"><label for="pixKeyType">Tipo de chave</label><select id="pixKeyType"><option value="celular">Celular</option><option value="cpf">CPF</option><option value="cnpj">CNPJ</option><option value="email">E-mail</option><option value="aleatoria">Aleatória</option></select></div>
@@ -137,7 +139,7 @@ table{width:100%;border-collapse:collapse;margin-top:12px;background:white}th,td
 const SUPABASE_URL = 'https://gcyuvbakxswkjcyqscth.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_haoKT8vSzAEpxwfsapBM1A_4REUsg8T';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-let db = {clients:[], suppliers:[], products:[], bags:{}, bagMeta:{}, closeRequests:{}, paymentSettings:null, payments:[], sales:[], deliveries:[]};
+let db = {clients:[], suppliers:[], products:[], bags:{}, bagMeta:{}, closeRequests:{}, paymentSettings:null, payments:[], sales:[], deliveries:[], liveSessions:[], supplierPayments:[]};
 let currentUser = null;
 let cameraScanner = null;
 let cameraTarget = null;
@@ -173,7 +175,7 @@ el('loginForm').addEventListener('submit',async e=>{
   catch(err){console.error(err);el('loginMessage').textContent='Não foi possível entrar: '+(err.message||'verifique e-mail e senha');}
 });
 async function loadCloud(){
-  const [c,s,p,b,bi,cr,ps,pay,closedBags,soldItems,deliveryRows]=await Promise.all([
+  const [c,s,p,b,bi,cr,ps,pay,closedBags,soldItems,deliveryRows,liveSessions,supplierPayments]=await Promise.all([
     sb.from('customers').select('*').order('created_at',{ascending:false}),
     sb.from('suppliers').select('*').eq('active',true).order('name'),
     sb.from('products').select('*').order('created_at',{ascending:false}),
@@ -184,10 +186,13 @@ async function loadCloud(){
     sb.from('payments').select('*').order('created_at',{ascending:false}),
     sb.from('bags').select('*').order('closed_at',{ascending:false}),
     sb.from('bag_items').select('*').order('added_at',{ascending:true}),
-    sb.from('deliveries').select('*').order('created_at',{ascending:false})
+    sb.from('deliveries').select('*').order('created_at',{ascending:false}),
+    sb.from('live_sessions').select('*').order('started_at',{ascending:false}),
+    sb.from('supplier_payments').select('*').order('paid_at',{ascending:false})
   ]);
-  for(const r of [c,s,p,b,bi,cr,ps,pay,closedBags,soldItems,deliveryRows]) if(r.error) throw r.error;
+  for(const r of [c,s,p,b,bi,cr,ps,pay,closedBags,soldItems,deliveryRows,liveSessions,supplierPayments]) if(r.error) throw r.error;
   db.clients=c.data.map(x=>({id:x.id,name:x.name,phone:x.phone||'',email:x.email||'',authUserId:x.auth_user_id||null,obs:x.notes||''}));
+  db.liveSessions=liveSessions.data||[];db.supplierPayments=supplierPayments.data||[];
   db.suppliers=s.data.map(x=>({id:x.id,name:x.name,phone:x.phone||'',rule:x.settlement_rule||'',notes:x.notes||''}));
   db.products=p.data.map(x=>({id:x.id,desc:x.description,short:x.short_code||'',size:x.size||'',cost:Number(x.cost||0),price:Number(x.sale_price||0),supplierId:x.supplier_id,supplier:(s.data.find(y=>y.id===x.supplier_id)||{}).name||'',type:x.acquisition_type,barcode:x.barcode||'',status:x.status==='available'?'Disponível':x.status==='reserved'?'Reservada':x.status==='sold'?'Vendida':'Baixada'}));
   db.bags={};db.bagMeta={};db.closeRequests={};db.paymentSettings=ps.data;db.payments=pay.data||[];
@@ -195,9 +200,11 @@ async function loadCloud(){
   const allSoldItems=(soldItems.data||[]).filter(item=>item.status==='sold');
   db.sales=allClosedBags.map(bag=>({
     id:bag.id,customerId:bag.customer_id,closedAt:bag.closed_at,createdAt:bag.created_at,
-    discount:Number(bag.discount_amount||0),items:allSoldItems.filter(item=>item.bag_id===bag.id).map(item=>({
-      description:item.description_snapshot||'Peça',size:item.size_snapshot||'',price:Number(item.price_snapshot||0),status:item.status
-    }))
+    discount:Number(bag.discount_amount||0),items:allSoldItems.filter(item=>item.bag_id===bag.id).map(item=>{
+       const product=p.data.find(row=>row.id===item.product_id)||{};
+       const supplierId=item.supplier_id_snapshot||product.supplier_id||null;
+       return {id:item.id,productId:item.product_id,description:item.description_snapshot||'Peça',size:item.size_snapshot||'',price:Number(item.price_snapshot||0),cost:Number(item.cost_snapshot??product.cost??0),supplierId,supplier:(s.data.find(row=>row.id===supplierId)||{}).name||'',acquisitionType:item.acquisition_type_snapshot||product.acquisition_type||'purchase',liveSessionId:item.live_session_id||null,status:item.status};
+     })
   })).filter(sale=>sale.items.length>0);
   db.deliveries=(deliveryRows.data||[]).map(row=>({...row,customerId:(closedBags.data||[]).find(bag=>bag.id===row.bag_id)?.customer_id||null}));
   if(ps.data){el('pixKey').value=ps.data.pix_key||'';el('pixKeyType').value=ps.data.pix_key_type||'celular';el('pixProvider').value=ps.data.pix_provider||'';el('pixReceiver').value=ps.data.pix_receiver||'';el('pixFeePercent').value=ps.data.pix_fee_percent??'0.99';el('cardFeePercent').value=ps.data.card_fee_percent??'';}
