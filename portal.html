@@ -18,6 +18,7 @@ button.secondary{background:white;color:var(--green);border:1px solid var(--line
 .hidden{display:none!important}.muted{color:var(--muted);font-size:13px}.line{border-top:1px solid var(--line);padding:11px 0;display:flex;justify-content:space-between;gap:14px}
 .total{font-size:20px;font-weight:800;color:var(--green)}.pill{background:var(--pale);color:var(--green);border-radius:30px;padding:4px 9px;font-size:11px;font-weight:700}
 #message{font-size:13px;color:#8a5138;white-space:pre-wrap}.empty{text-align:center;padding:25px;color:var(--muted)}
+.delivery-done{display:inline-block;background:#dff3e3;color:#176b35;border:1px solid #8ed2a0;border-radius:999px;padding:9px 14px;font-weight:800;font-size:16px;line-height:1.4}
 @media(max-width:520px){.card{padding:15px}h1{font-size:21px}}
 </style></head>
 <body>
@@ -183,7 +184,7 @@ async function loadCustomerData(customer){
   if(requestShippingBtn)requestShippingBtn.addEventListener('click',()=>requestDelivery('shipping'));
   const notifyDeliveryBtn=$('notifyDeliveryBtn');
   if(notifyDeliveryBtn)notifyDeliveryBtn.addEventListener('click',()=>notifyGarimpeira(notifyKind));
-  $('deliveries').innerHTML=deliveries.length?deliveries.map(d=>'<div class="line"><span><b>'+esc(deliveryLabels[d.status]||d.status)+'</b><br><small class="muted">'+esc(d.address||'A combinar pelo WhatsApp')+(d.tracking_code?' • Rastreio: '+esc(d.tracking_code):'')+'</small></span>'+(Number(d.shipping_cost||0)>0?'<b>'+money(d.shipping_cost)+'</b>':'')+'</div>').join(''):'<div class="empty">Nenhuma solicitação cadastrada.</div>';
+  $('deliveries').innerHTML=deliveries.length?deliveries.map(d=>{const deliveredDate=d.delivered_at?new Date(d.delivered_at).toLocaleDateString('pt-BR'):'Data não registrada';const statusMarkup=d.status==='delivered'?'<span class="delivery-done">✓ Entregue • '+esc(deliveredDate)+'</span>':'<b>'+esc(deliveryLabels[d.status]||d.status)+'</b>';return '<div class="line"><span>'+statusMarkup+'<br><small class="muted">'+esc(d.address||'A combinar pelo WhatsApp')+(d.tracking_code?' • Rastreio: '+esc(d.tracking_code):'')+'</small></span>'+(Number(d.shipping_cost||0)>0?'<b>'+money(d.shipping_cost)+'</b>':'')+'</div>'}).join(''):'<div class="empty">Nenhuma solicitação cadastrada.</div>';
 }
 (async()=>{const {data:{session}}=await sb.auth.getSession();if(session)await startPortal()})();
 }
