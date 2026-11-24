@@ -82,7 +82,20 @@ function togglePixInstructions(){
   box.innerHTML='<div class="note"><b>Pagamento por Pix</b><br>Chave ('+esc(paymentSettings.pix_key_type)+'): <b>'+esc(paymentSettings.pix_key)+'</b><br>Recebedor: '+esc(paymentSettings.pix_receiver||'confira o nome exibido no seu banco')+'<br>Instituição: '+esc(paymentSettings.pix_provider)+'<br>Valor da sacolinha: <b>'+money(currentBagTotal)+'</b><br><small>Copie a chave, abra o aplicativo do seu banco, cole a chave e confira o valor e o nome do recebedor antes de pagar. A confirmação será feita pela Garimpeira após conferir o recebimento.</small><br><button type="button" onclick="copyPixKey()">Copiar chave Pix</button></div>';
 }
 async function copyPixKey(){if(!paymentSettings?.pix_key)return;try{await navigator.clipboard.writeText(paymentSettings.pix_key);alert('Chave Pix copiada.');}catch(e){prompt('Copie a chave Pix:',paymentSettings.pix_key);}}
-async function requestClose(bagId){const method=$('paymentPreference').value;if(!confirm('Enviar solicitação de fechamento?'))return;const {error}=await sb.rpc('customer_request_bag_close',{p_bag_id:bagId,p_payment_method:method});if(error){msg(error.message);return}msg('Solicitação enviada à Garimpeira.');await startPortal();}
+async function requestClose(bagId){
+ const method=$('paymentPreference').value;
+ if(method==='card'){
+  if(!confirm('Você será direcionada ao ambiente seguro do Mercado Pago para pagar com cartão. Continuar?'))return;
+  msg('Preparando pagamento...');
+  const {data,error}=await sb.functions.invoke('create-mp-checkout',{body:{bag_id:bagId}});
+  if(error||!data?.init_point){msg(data?.error||error?.message||'Não foi possível iniciar o pagamento.');return;}
+  window.location.href=data.init_point;return;
+ }
+ if(method==='mixed'&&!confirm('O pagamento misto será combinado com a administração. A solicitação será enviada para conferência e instruções. Continuar?'))return;
+ if(method==='pix'&&!confirm('Após enviar, faça o Pix pela chave exibida e aguarde a conferência manual da Garimpeira. Enviar solicitação?'))return;
+ const {error}=await sb.rpc('customer_request_bag_close',{p_bag_id:bagId,p_payment_method:method});
+ if(error){msg(error.message);return}msg('Solicitação enviada à Garimpeira.');await startPortal();
+}
 async function loadCustomerData(customer){
   const bags=await sb.from('bags').select('*').eq('customer_id',customer.id).order('created_at',{ascending:false});
   if(bags.error){$('currentBag').textContent=bags.error.message;return}
