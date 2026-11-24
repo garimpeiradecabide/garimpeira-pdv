@@ -645,7 +645,7 @@ function sendLiveBagInvoice(customerId){
   const subtotal=items.reduce((sum,item)=>sum+Number(item.price||0),0);
   const discount=Number(meta.discount||0);
   const total=Math.max(0,subtotal-discount);
-  const lines=items.map((item,index)=>(index+1)+'. '+item.description+(item.size?' — '+item.size:'')+' — '+money(item.price));
+  const lines=items.map(item=>item.description+(item.size?' — '+item.size:'')+' — '+money(item.price));
   const settings=db.paymentSettings||{};
   const pixKey=settings.pix_key||el('pixKey')?.value||'';
   const keyType=settings.pix_key_type||el('pixKeyType')?.value||'';
