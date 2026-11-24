@@ -637,7 +637,7 @@ function renderCart(){
     (meta?`<div class="row" style="margin-top:12px"><button class="secondary" onclick="setBagDiscount('${cid}')">Conceder / alterar desconto</button><button onclick="closeBag('${cid}')" ${items.length&&(total===0||(first?.status==='paid'&&balance===0))?'':'disabled'}>Finalizar sacolinha quitada</button></div>`:'');
 }
 function customerFirstName(customer){
-  return String(customer?.name||'').trim().split(/\\s+/)[0]||'';
+  return String(customer?.name||'').trim().split(/\s+/)[0]||'';
 }
 function sendLiveBagInvoice(customerId){
   const customer=db.clients.find(row=>row.id===customerId);
