@@ -456,11 +456,13 @@ async function createFirstItemCheckout(customerId){
 }
 function balancePaymentMessage(customer,meta,items,payment){
   const subtotal=items.reduce((sum,item)=>sum+Number(item.price||0),0);
-  const total=Math.max(0,subtotal-Number(meta.discount||0));
+  const discount=Number(meta.discount||0);
+  const total=Math.max(0,subtotal-discount);
   const firstPaid=meta.firstPayment?.status==='paid'?Number(meta.firstPayment.base_amount||0):0;
-  const deadline=payment.due_at?new Date(payment.due_at).toLocaleString('pt-BR'):'15h do dia seguinte';
   const list=items.map(i=>'• '+i.description+' ('+i.size+'): '+money(i.price)).join('\n');
-  return 'Olá, '+customer.name+'! 🤍 Segue o fechamento da sua sacolinha da Garimpeira de Cabide.\n\n'+list+'\n\nSubtotal: '+money(subtotal)+'\nDesconto: '+money(meta.discount||0)+'\nTotal das peças: '+money(total)+'\nPrimeira peça já paga: − '+money(firstPaid)+'\nPagamentos adicionais já conferidos: − '+money(meta.balancePaid||0)+'\nSaldo das peças: '+money(payment.base_amount)+'\nTaxa de processamento Pix: '+money(payment.fee_amount)+'\nTotal do Pix: '+money(payment.amount)+'\n\nPague pelo link seguro do Mercado Pago: '+payment.checkout_url+'\n\nPrazo para pagamento: '+deadline+'. Obrigada pela preferência! 🤍';
+  const hour=Number(new Intl.DateTimeFormat('pt-BR',{hour:'2-digit',hour12:false}).format(new Date()));
+  const greeting=hour<12?'Bom dia':hour<18?'Boa tarde':'Boa noite';
+  return greeting+', '+customer.name+'! 🤍\n\nPassei para te enviar o resumo da sua sacolinha da Garimpeira de Cabide:\n\n'+list+'\n\nSubtotal: '+money(subtotal)+(discount>0?'\nDesconto: − '+money(discount):'')+'\nTotal das peças: '+money(total)+'\nPrimeira peça já paga: − '+money(firstPaid)+(Number(meta.balancePaid||0)>0?'\nOutro pagamento já confirmado: − '+money(meta.balancePaid):'')+'\n\n**Saldo para finalizar: '+money(payment.amount)+'**\n\nPara concluir, é só pagar pelo link seguro do Mercado Pago:\n'+payment.checkout_url+'\n\nMuito obrigada pela preferência! 🤍';
 }
 function sendBagBalanceWhatsApp(customerId){
   const meta=db.bagMeta[customerId],payment=meta?.balancePayment,customer=db.clients.find(c=>c.id===customerId),items=db.bags[customerId]||[];
