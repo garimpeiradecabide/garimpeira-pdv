@@ -420,7 +420,7 @@ function renderCart(){
     }else{
       firstPanel='<div class="note"><b>Sacolinha reservada para testes.</b><br>Não gere cobranças de produção para esta cliente.</div>';
     }
-  }else if(meta?.firstPaymentCombinedAt){
+  }else if(meta?.firstPaymentCombinedAt&&first?.status!=='paid'){
     firstPanel='<div class="note"><b>Pagamento combinado autorizado pela Garimpeira.</b><br>A cliente está liberada para continuar comprando. O combinado não representa pagamento recebido.</div>';
     if(balance>0)firstPanel+='<div class="note"><b>Valor ainda a receber: '+money(balance)+'</b><br>Depois de conferir o Pix ou outro pagamento fora do sistema, registre o recebimento para finalizar a sacolinha.<br><button onclick="registerExternalBagPayment(\''+cid+'\')">Pagamento concluído externamente e finalizar</button></div>';
   }else if(items.length===1&&!first){
@@ -549,7 +549,7 @@ async function closeBag(customerId){
   if(total>0&&meta.firstPayment?.status!=='paid')return alert('A primeira peça precisa estar paga e aprovada antes do fechamento.');
   const firstPaid=Number(meta.firstPayment?.base_amount||0);
   const remaining=Math.max(0,total-firstPaid-Number(meta.balancePaid||0));
-  if(remaining>0)return alert('Ainda existe saldo pendente de '+money(remaining)+'. Gere a cobrança Pix ou registre o cartão externo depois de conferir o recebimento.');
+  if(remaining>0)return alert('Ainda existe saldo pendente de '+money(remaining)+'. Envie a cobrança diretamente pelo WhatsApp e registre o pagamento externo depois de conferir o recebimento.');
   if(!confirm(total===0?'O total da sacolinha está zerado pelo desconto administrativo. Deseja finalizar esta sacolinha sem registrar pagamento?':'A primeira peça e todos os pagamentos adicionais já foram confirmados. Deseja finalizar esta sacolinha?'))return;
   const {error}=await sb.rpc('admin_close_bag',{p_bag_id:meta.id,p_method:'pix',p_pix_amount:0,p_card_amount:0});
   if(error)return reportError(error,'Não foi possível finalizar a sacolinha.');
