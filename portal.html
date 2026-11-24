@@ -34,7 +34,7 @@ button.secondary{background:white;color:var(--green);border:1px solid var(--line
 <div class="row"><div><h1 id="welcome">Minha sacolinha</h1><p>Suas compras e informações em um só lugar.</p></div><button class="secondary" id="logoutBtn">Sair</button></div>
 <div class="card"><h2>Sacolinha atual</h2><div id="currentBag" class="empty">Carregando…</div></div>
 <div class="card"><h2>Histórico de compras</h2><div id="history" class="empty">Carregando…</div></div>
-<div class="card"><h2>Entregas</h2><div id="deliveries" class="empty">Nenhuma entrega cadastrada.</div></div>
+<div class="card"><h2>Entregas</h2><p>Depois que sua compra estiver finalizada, solicite o tipo de entrega desejado. A Garimpeira combinará o valor diretamente com você pelo WhatsApp.</p><div id="deliveryActions"></div><div id="deliveries" class="empty">Nenhuma solicitação cadastrada.</div></div>
 <div class="card"><h2>Segurança da conta</h2><p>Você pode trocar sua senha quando quiser.</p>
 <label for="newPassword">Nova senha</label><input id="newPassword" type="password" minlength="10" autocomplete="new-password" placeholder="Pelo menos 10 caracteres">
 <label for="confirmPassword">Confirme a nova senha</label><input id="confirmPassword" type="password" minlength="10" autocomplete="new-password" placeholder="Digite novamente">
@@ -54,6 +54,8 @@ const URL='https://gcyuvbakxswkjcyqscth.supabase.co';
 const KEY='sb_publishable_haoKT8vSzAEpxwfsapBM1A_4REUsg8T';
 const sb=window.supabase.createClient(URL,KEY);
 let portalRefreshTimer=null;
+let activeCustomer=null;
+let deliveryBagId=null;
 const money=n=>Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function msg(t){$('message').textContent=t}
@@ -85,15 +87,35 @@ async function startPortal(){
   if(own.error){msg(own.error.message);return}
   customer=own.data;
   if(!customer){await sb.auth.signOut();msg('Este acesso ainda não está vinculado a um cadastro de cliente. Fale com a Garimpeira.');return}
+  activeCustomer=customer;
   $('auth').classList.add('hidden');$('portal').classList.remove('hidden');$('welcome').textContent='Olá, '+customer.name+'!';
   await loadCustomerData(customer);
   if(portalRefreshTimer)clearInterval(portalRefreshTimer);
   portalRefreshTimer=setInterval(()=>loadCustomerData(customer),7000);
 }
+async function requestDelivery(kind){
+  if(!activeCustomer||!deliveryBagId)return;
+  const tab=window.open('about:blank','_blank');
+  const requestType=kind==='moto'?'requested_moto':'requested_shipping';
+  const {data,error}=await sb.from('deliveries').insert({
+    bag_id:deliveryBagId,
+    shipping_cost:0,
+    status:requestType,
+    notes:kind==='moto'?'Solicitação de moto entrega pelo portal':'Solicitação de simulação de frete pelo portal'
+  }).select().single();
+  if(error){if(tab)tab.close();alert('Não foi possível registrar sua solicitação: '+error.message);return}
+  const label=kind==='moto'?'moto entrega':'simulação de frete';
+  const message='Olá, Garimpeira! 🤍 A cliente '+activeCustomer.name+' solicitou '+label+'. O pedido já foi registrado no Garimpeira PDV.';
+  const url='https://wa.me/5511916120633?text='+encodeURIComponent(message);
+  if(tab)tab.location.href=url;else window.location.href=url;
+  await loadCustomerData(activeCustomer);
+}
 async function loadCustomerData(customer){
   const bags=await sb.from('bags').select('*').eq('customer_id',customer.id).order('created_at',{ascending:false});
   if(bags.error){$('currentBag').textContent=bags.error.message;return}
   const ids=bags.data.map(b=>b.id);
+  const latestClosedBag=bags.data.find(b=>b.status==='closed');
+  deliveryBagId=latestClosedBag?.id||null;
   let items=[],payments=[],deliveries=[];
   if(ids.length){
     const [i,p,d,cr]=await Promise.all([
@@ -129,7 +151,12 @@ async function loadCustomerData(customer){
     const its=items.filter(i=>i.bag_id===b.id),paid=payments.filter(p=>p.bag_id===b.id&&p.status==='paid'&&!p.superseded_at);
     return '<div class="line"><span><b>Compra de '+new Date(b.created_at).toLocaleDateString('pt-BR')+'</b><br><small class="muted">'+its.length+' peça(s) • '+paid.map(p=>esc(p.method)+' '+money(p.amount)).join(' + ')+'</small></span><b>'+money(its.reduce((s,i)=>s+Number(i.price_snapshot||0),0)-Number(b.discount_amount||0))+'</b></div>';
   }).join(''):'<div class="empty">Suas compras finalizadas aparecerão aqui.</div>';
-  $('deliveries').innerHTML=deliveries.length?deliveries.map(d=>'<div class="line"><span><b>'+esc(d.status)+'</b><br><small class="muted">'+esc(d.address||'Endereço não informado')+(d.tracking_code?' • Rastreio: '+esc(d.tracking_code):'')+'</small></span><b>'+money(d.shipping_cost)+'</b></div>').join(''):'<div class="empty">Nenhuma entrega cadastrada.</div>';
+  const deliveryLabels={requested_moto:'Solicitação de moto entrega enviada',requested_shipping:'Solicitação de simulação de frete enviada',accepted:'Solicitação aceita • aguarde nosso contato',preparing:'Em preparação',shipped:'Enviado / em rota',delivered:'Entregue',pending:'Aguardando'};
+  const existingRequest=deliveryBagId&&deliveries.some(d=>d.bag_id===deliveryBagId);
+  $('deliveryActions').innerHTML=deliveryBagId&&!existingRequest
+    ? '<p class="muted">Escolha como deseja receber sua compra:</p><div class="row"><button type="button" onclick="requestDelivery(\'moto\')">Solicitar moto entrega</button><button type="button" class="secondary" onclick="requestDelivery(\'shipping\')">Solicitar simulação de frete</button></div>'
+    : deliveryBagId&&existingRequest?'<p class="muted">Sua solicitação desta compra já foi registrada. A Garimpeira entrará em contato pelo WhatsApp.</p>':'<p class="muted">As opções de entrega ficam disponíveis após a finalização da compra.</p>';
+  $('deliveries').innerHTML=deliveries.length?deliveries.map(d=>'<div class="line"><span><b>'+esc(deliveryLabels[d.status]||d.status)+'</b><br><small class="muted">'+esc(d.address||'A combinar pelo WhatsApp')+(d.tracking_code?' • Rastreio: '+esc(d.tracking_code):'')+'</small></span>'+(Number(d.shipping_cost||0)>0?'<b>'+money(d.shipping_cost)+'</b>':'')+'</div>').join(''):'<div class="empty">Nenhuma solicitação cadastrada.</div>';
 }
 (async()=>{const {data:{session}}=await sb.auth.getSession();if(session)await startPortal()})();
 }
