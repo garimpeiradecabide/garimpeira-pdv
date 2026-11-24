@@ -305,13 +305,18 @@ async function selectLiveProduct(productId){
 async function removeBagItem(customerId,itemId){
   const meta=db.bagMeta[customerId],items=db.bags[customerId]||[];
   if(meta?.firstPayment?.status==='pending')return alert('A primeira peça está aguardando pagamento. Não remova esta peça até a cobrança ser resolvida.');
-  if(meta?.balancePayment?.status==='pending')return alert('Existe uma cobrança do saldo aguardando pagamento. Não remova peças até resolver a cobrança.');
   if(meta?.firstPayment?.status==='paid'&&items[0]?.id===itemId)return alert('A primeira peça já foi paga e não pode ser removida por esta ação.');
-  if(!confirm('Remover esta peça da sacolinha e devolver ao estoque?'))return;
+  const hasPendingBalance=meta?.balancePayment?.status==='pending';
+  const message=hasPendingBalance
+    ?'Existe uma cobrança do saldo ativa. Ao confirmar, o sistema primeiro tentará invalidar o link antigo no Mercado Pago. Só depois removerá a peça e recalculará o saldo. Se o Mercado Pago não confirmar a invalidação, a peça será mantida. Deseja continuar?'
+    :'Remover esta peça da sacolinha e devolver ao estoque?';
+  if(!confirm(message))return;
   try{
-    const {error}=await sb.rpc('admin_remove_bag_item',{p_item_id:itemId});
+    const {data,error}=await sb.functions.invoke('admin-remove-bag-item',{body:{item_id:itemId}});
     if(error)throw error;
+    if(data?.error)throw new Error(data.error+(data.details?'\\n'+data.details:''));
     await loadCloud();
+    if(data?.old_link_expired)alert('Peça removida. O link antigo foi invalidado e o saldo foi recalculado. Agora você já pode gerar e enviar a nova cobrança.');
   }catch(err){reportError(err,'Não foi possível remover a peça.');}
 }
 function reportError(err,prefix){console.error(err);alert(prefix+'\n\nDetalhe: '+(err.message||err.details||'erro não identificado'));}
