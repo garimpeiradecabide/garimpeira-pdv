@@ -118,7 +118,7 @@ table{width:100%;border-collapse:collapse;margin-top:12px;background:white}th,td
   <section id="live" class="panel"><div class="card"><h3>Controle da live</h3><div id="liveSessionControls"></div><div class="formgrid"><div class="field"><label for="liveTitle">Nome desta live</label><input id="liveTitle" placeholder="Ex.: Live de terça • novidades"></div><div class="field"><label for="livePlatform">Plataforma</label><select id="livePlatform"><option value="Facebook">Facebook</option><option value="TikTok">TikTok</option><option value="Instagram">Instagram</option><option value="WhatsApp">WhatsApp</option><option value="Outra">Outra</option></select></div></div><div class="row"><button onclick="startLiveSession()">Iniciar live</button><button class="secondary" onclick="endLiveSession()">Encerrar live atual</button></div><p class="small-muted">Inicie a live antes de começar a bipar as peças. Assim cada venda ficará vinculada ao resultado daquela live.</p></div><div class="card">
     <h3>Frente de caixa • venda ao vivo</h3><div class="formgrid">
       <div class="field"><label for="liveClientSearch">Buscar cliente pelo nome</label><input id="liveClientSearch" placeholder="Digite o nome: Ana, Maria, Mara..." oninput="filterLiveClients()"><label for="liveClient">Cliente selecionada</label><select id="liveClient" onchange="renderCart()"></select></div>
-      <div class="field"><label for="scan">Código de barras da peça</label><input id="scan" inputmode="numeric" placeholder="Leia com a câmera ou digite o código" onkeydown="if(event.key==='Enter'){event.preventDefault();scanProduct()}"><button type="button" class="secondary" style="margin-top:6px;width:100%" onclick="openCameraScan('live')">📷 Bipar com a câmera do celular</button></div>
+      <div class="field"><label for="scan">Código de barras da peça</label><input id="scan" inputmode="numeric" autocomplete="off" placeholder="Use o leitor físico ou digite o código" onkeydown="if(event.key==='Enter'){event.preventDefault();scanProduct()}"><button type="button" class="secondary" style="margin-top:6px;width:100%" onclick="activatePhysicalScanner()">⌨️ Ativar leitor USB / Bluetooth</button><button type="button" class="secondary" style="margin-top:6px;width:100%" onclick="openCameraScan('live')">📷 Bipar com a câmera do celular</button><small class="small-muted" id="physicalScannerStatus">Leitor físico: conecte por USB ou Bluetooth em modo teclado e deixe o cursor neste campo. A leitura com Enter adiciona a peça.</small></div>
       <div class="field"><label for="shortScan">Ou código curto da live</label><input id="shortScan" placeholder="Ex.: 025" onkeydown="if(event.key==='Enter'){event.preventDefault();scanShort()}"></div>
       <div class="field"><label for="liveSearch">Pesquisar peça pelo nome, tamanho, código de live ou barras</label><input id="liveSearch" placeholder="Digite parte da descrição ou um código..." oninput="searchLiveProducts()"></div>
     </div><div id="liveSearchResults"></div><div class="row"><button onclick="scanProduct()">Adicionar código</button><button class="secondary" onclick="scanShort()">Adicionar código curto</button><button class="secondary" onclick="show('clients')">Cadastrar cliente</button></div>
@@ -158,7 +158,15 @@ function show(tab){
   document.querySelectorAll('.panel').forEach(x=>x.classList.toggle('active',x.id===tab));
   document.querySelectorAll('.nav button').forEach(x=>x.classList.toggle('active',x.dataset.tab===tab));
   render();
-  if(tab==='live')el('scan').focus();
+  if(tab==='live')setTimeout(()=>el('scan').focus(),80);
+}
+function activatePhysicalScanner(){
+  const field=el('scan');
+  if(!field)return;
+  field.focus();
+  field.select();
+  const status=el('physicalScannerStatus');
+  if(status)status.textContent='Pronto para bipar. Deixe o cursor neste campo; cada leitura seguida de Enter adiciona uma peça à cliente selecionada.';
 }
 async function login(email,password){
   const {data,error}=await sb.auth.signInWithPassword({email,password});
@@ -357,10 +365,16 @@ async function closeCameraScan(){
   if(cameraScanner){try{if(cameraScanner.isScanning)await cameraScanner.stop();await cameraScanner.clear();}catch(e){}cameraScanner=null;}
   el('cameraScanner').style.display='none';
 }
+let physicalScanInProgress=false;
 async function scanProduct(){
-  const code=el('scan').value.trim();el('scan').value='';
-  const product=db.products.find(p=>p.barcode===code);if(!product)return alert('Código não encontrado.');
-  await addToBag(product);
+  if(physicalScanInProgress)return;
+  const field=el('scan'),code=field.value.trim();field.value='';
+  if(!code){field.focus();return;}
+  const product=db.products.find(p=>p.barcode===code);
+  if(!product){alert('Código não encontrado. Confira a etiqueta e tente novamente.');field.focus();return;}
+  physicalScanInProgress=true;
+  try{await addToBag(product);}
+  finally{physicalScanInProgress=false;field.focus();}
 }
 async function scanShort(){
   const code=el('shortScan').value.trim();el('shortScan').value='';
