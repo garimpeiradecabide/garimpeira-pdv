@@ -843,7 +843,7 @@ async function deleteCompletedSale(bagId){
   if(!sale)return alert('Não encontrei esta venda concluída. Atualize o painel.');
   const customer=db.clients.find(row=>row.id===sale.customerId);
   const names=sale.items.map(item=>item.description).join(', ');
-  const confirmation='ATENÇÃO — CONFIRME A DEVOLUÇÃO\\n\\nA venda de '+(customer?.name||'cliente')+' será excluída definitivamente.\\n\\nPeças: '+names+'\\n\\nAs peças voltarão para o estoque, e a venda deixará de contar no faturamento e nos relatórios de lucro. Os pagamentos serão removidos do histórico desta sacolinha.\\n\\nSe a cliente já pagou, confirme que você JÁ DEVOLVEU o dinheiro por fora (Pix, banco ou cartão). O PDV não faz o estorno financeiro.\\n\\nDeseja continuar?';
+  const confirmation='ATENÇÃO — CONFIRME A DEVOLUÇÃO\n\nA venda de '+(customer?.name||'cliente')+' será excluída definitivamente.\n\nPeças: '+names+'\n\nAs peças voltarão para o estoque, e a venda deixará de contar no faturamento e nos relatórios de lucro. Os pagamentos serão removidos do histórico desta sacolinha.\n\nSe a cliente já pagou, confirme que você JÁ DEVOLVEU o dinheiro por fora (Pix, banco ou cartão). O PDV não faz o estorno financeiro.\n\nDeseja continuar?';
   if(!confirm(confirmation))return;
   const {data,error}=await sb.rpc('admin_delete_completed_sale',{p_bag_id:bagId});
   if(error)return reportError(error,'Não foi possível excluir esta venda. Confira se ela ainda está concluída e tente novamente.');
