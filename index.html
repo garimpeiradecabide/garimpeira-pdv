@@ -316,7 +316,19 @@ function renderCart(){
   const paidCredit=first?.status==='paid'?Number(first.base_amount||0):0;
   const balance=Math.max(0,total-paidCredit-Number(meta?.balancePaid||0)),balancePayment=meta?.balancePayment;
   let firstPanel='';
-  if(items.length===1&&!first){
+  const customer=db.clients.find(c=>c.id===cid);
+  const isTestCustomer=(customer?.name||'').trim().toLowerCase()==='jilo maria';
+  if(isTestCustomer){
+    if(items.length===1&&(!first||first.status==='failed')){
+      firstPanel=`<div class="note"><b>Ambiente de TESTE — Mercado Pago.</b><br>Esta sacolinha é exclusiva para testes. Nenhuma cobrança real será enviada.<div class="formgrid"><div class="field"><label for="testFirstPayMethod">Forma de pagamento</label><select id="testFirstPayMethod"><option value="pix">Pix</option><option value="card">Cartão de crédito</option></select></div></div><button onclick="createTestFirstItemCheckout('${cid}')">Gerar checkout de TESTE</button></div>`;
+    }else if(first?.environment==='test'&&first.status==='pending'){
+      firstPanel=`<div class="note"><b>Cobrança de TESTE aguardando pagamento.</b><br>Total: ${money(first.amount)}<br><button class="secondary" onclick="openTestCheckout('${cid}')">Abrir checkout de TESTE novamente</button></div>`;
+    }else if(first?.environment==='test'&&first.status==='paid'){
+      firstPanel=`<div class="note"><b>Pagamento de TESTE aprovado.</b><br>Crédito de teste: ${money(first.base_amount)}<br>As próximas peças estão liberadas nesta sacolinha de teste.</div>`;
+    }else{
+      firstPanel='<div class="note"><b>Sacolinha reservada para testes.</b><br>Não gere cobranças de produção para esta cliente.</div>';
+    }
+  }else if(items.length===1&&!first){
     firstPanel=`<div class="note"><b>Primeira peça: pagamento obrigatório.</b><br>Escolha a forma informada pela cliente durante a live. As próximas peças só serão liberadas após a aprovação do Mercado Pago.<div class="formgrid"><div class="field"><label for="firstPayMethod">Forma de pagamento</label><select id="firstPayMethod"><option value="pix">Pix</option><option value="card">Cartão de crédito</option></select></div></div><button onclick="createFirstItemCheckout('${cid}')">Gerar cobrança e abrir WhatsApp</button></div>`;
   }else if(first?.status==='pending'){
     firstPanel=`<div class="note"><b>Primeira peça aguardando pagamento.</b><br>Peça: ${money(first.base_amount)} • Taxa de processamento: ${money(first.fee_amount)} • Total do link: ${money(first.amount)}<br>Forma: ${first.method==='card'?'Cartão de crédito':'Pix'}<br><button class="secondary" onclick="sendFirstPaymentWhatsApp('${cid}')">Abrir WhatsApp com o link novamente</button></div>`;
@@ -350,6 +362,27 @@ function sendFirstPaymentWhatsApp(customerId){
   const meta=db.bagMeta[customerId],first=meta?.firstPayment,customer=db.clients.find(c=>c.id===customerId);
   if(!first?.checkout_url||!customer?.phone)return alert('Não encontrei o link ou o WhatsApp cadastrado desta cliente.');
   window.open('https://wa.me/'+normalizeWhatsapp(customer.phone)+'?text='+encodeURIComponent(firstPaymentMessage(customer,first)),'_blank');
+}
+function openTestCheckout(customerId){
+  const first=db.bagMeta[customerId]?.firstPayment;
+  if(first?.environment!=='test'||!first?.checkout_url)return alert('Não encontrei um checkout de teste pendente.');
+  window.open(first.checkout_url,'_blank','noopener');
+}
+async function createTestFirstItemCheckout(customerId){
+  const meta=db.bagMeta[customerId],method=el('testFirstPayMethod')?.value;
+  if(!meta?.id)return alert('Não encontrei a sacolinha de teste.');
+  if(!['pix','card'].includes(method))return alert('Escolha Pix ou cartão.');
+  const checkoutWindow=window.open('about:blank','_blank');
+  const {data,error}=await sb.functions.invoke('admin-create-test-first-item-checkout',{body:{bag_id:meta.id,method}});
+  if(error||data?.error||!data?.init_point){
+    if(checkoutWindow)checkoutWindow.close();
+    return alert(data?.error||error?.message||'Não foi possível gerar o checkout de teste.');
+  }
+  await loadCloud();
+  const fresh=db.bagMeta[customerId]?.firstPayment;
+  const url=fresh?.environment==='test'&&fresh?.checkout_url?fresh.checkout_url:data.init_point;
+  if(checkoutWindow)checkoutWindow.location.href=url;
+  else window.open(url,'_blank','noopener');
 }
 async function createFirstItemCheckout(customerId){
   const meta=db.bagMeta[customerId],customer=db.clients.find(c=>c.id===customerId),method=el('firstPayMethod')?.value;
