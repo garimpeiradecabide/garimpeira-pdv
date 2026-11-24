@@ -118,7 +118,7 @@ table{width:100%;border-collapse:collapse;margin-top:12px;background:white}th,td
     <div class="field"><label for="pixKey">Chave Pix manual</label><input id="pixKey" placeholder="Chave Pix atual"></div>
     <div class="field"><label for="pixKeyType">Tipo de chave</label><select id="pixKeyType"><option value="celular">Celular</option><option value="cpf">CPF</option><option value="cnpj">CNPJ</option><option value="email">E-mail</option><option value="aleatoria">Aleatória</option></select></div>
     <div class="field"><label for="pixProvider">Instituição</label><input id="pixProvider" placeholder="Ex.: Mercado Pago"></div>
-    <div class="field"><label for="pixReceiver">Nome do recebedor (como aparece no banco)</label><input id="pixReceiver" placeholder="Nome do titular"></div><div class="field"><label for="cardFeePercent">Taxa efetiva Mercado Pago (link online, 1x) (%)</label><input id="cardFeePercent" type="number" min="0.01" max="100" step="0.01" placeholder="Ex.: 4,99"></div>
+    <div class="field"><label for="pixReceiver">Nome do recebedor (como aparece no banco)</label><input id="pixReceiver" placeholder="Nome do titular"></div><div class="field"><label for="pixFeePercent">Taxa de processamento Pix (%)</label><input id="pixFeePercent" type="number" min="0" max="100" step="0.01" placeholder="0,99"></div><div class="field"><label for="cardFeePercent">Taxa de processamento do cartão (link online, 1x) (%)</label><input id="cardFeePercent" type="number" min="0.01" max="100" step="0.01" placeholder="4,98"></div>
   </div><button onclick="savePaymentSettings()">Salvar configurações de recebimento</button><span id="pixSettingsStatus" class="small-muted"></span><p class="small-muted">Informe a taxa de processamento do Checkout Pro / link online com recebimento imediato (D0), não a taxa da maquininha física. Na primeira peça, o Mercado Pago confirma Pix ou cartão automaticamente e permite até 18 parcelas, conforme as condições da sua conta. Os juros do parcelamento são repassados pelo próprio Mercado Pago à compradora. No saldo restante, o sistema gera cobrança Pix; cartão é registrado manualmente somente após você conferir o recebimento do link externo.</p></div><div class="card"><h3>Conferência de pagamentos</h3><p class="sub">A primeira peça será confirmada automaticamente pelo Mercado Pago. O saldo por Pix também terá confirmação automática. Pagamentos de saldo por cartão, feitos em link externo, serão registrados manualmente pela administração após conferência.</p></div></section>
 </main>
 </div>
@@ -176,7 +176,7 @@ async function loadCloud(){
   db.suppliers=s.data.map(x=>({id:x.id,name:x.name,phone:x.phone||'',rule:x.settlement_rule||'',notes:x.notes||''}));
   db.products=p.data.map(x=>({id:x.id,desc:x.description,short:x.short_code||'',size:x.size||'',cost:Number(x.cost||0),price:Number(x.sale_price||0),supplierId:x.supplier_id,supplier:(s.data.find(y=>y.id===x.supplier_id)||{}).name||'',type:x.acquisition_type,barcode:x.barcode||'',status:x.status==='available'?'Disponível':x.status==='reserved'?'Reservada':x.status==='sold'?'Vendida':'Baixada'}));
   db.bags={};db.bagMeta={};db.closeRequests={};db.paymentSettings=ps.data;db.payments=pay.data||[];
-  if(ps.data){el('pixKey').value=ps.data.pix_key||'';el('pixKeyType').value=ps.data.pix_key_type||'celular';el('pixProvider').value=ps.data.pix_provider||'';el('pixReceiver').value=ps.data.pix_receiver||'';el('cardFeePercent').value=ps.data.card_fee_percent??'';}
+  if(ps.data){el('pixKey').value=ps.data.pix_key||'';el('pixKeyType').value=ps.data.pix_key_type||'celular';el('pixProvider').value=ps.data.pix_provider||'';el('pixReceiver').value=ps.data.pix_receiver||'';el('pixFeePercent').value=ps.data.pix_fee_percent??'0.99';el('cardFeePercent').value=ps.data.card_fee_percent??'';}
   const bagById=new Map(b.data.map(x=>[x.id,x]));
   for(const bag of b.data){
     db.bags[bag.customer_id]=[];
@@ -197,8 +197,11 @@ async function loadCloud(){
 async function savePaymentSettings(){
   const raw=String(el('cardFeePercent').value||'').trim().replace(',','.');
   const fee=raw===''?null:Number(raw);
-  if(fee!==null&&(!Number.isFinite(fee)||fee<=0||fee>100))return alert('Informe uma taxa válida, maior que zero e até 100%.');
-  const payload={singleton:true,pix_key:el('pixKey').value.trim(),pix_key_type:el('pixKeyType').value,pix_provider:el('pixProvider').value.trim(),pix_receiver:el('pixReceiver').value.trim(),card_fee_percent:fee};
+  const pixRaw=String(el('pixFeePercent').value||'0.99').trim().replace(',','.');
+  const pixFee=Number(pixRaw);
+  if(fee!==null&&(!Number.isFinite(fee)||fee<=0||fee>100))return alert('Informe uma taxa de cartão válida, maior que zero e até 100%.');
+  if(!Number.isFinite(pixFee)||pixFee<0||pixFee>=100)return alert('Informe uma taxa Pix válida, de zero até menos de 100%.');
+  const payload={singleton:true,pix_key:el('pixKey').value.trim(),pix_key_type:el('pixKeyType').value,pix_provider:el('pixProvider').value.trim(),pix_receiver:el('pixReceiver').value.trim(),pix_fee_percent:pixFee,card_fee_percent:fee};
   if(!payload.pix_key||!payload.pix_provider)return alert('Informe a chave Pix e a instituição.');
   const {error}=await sb.from('payment_settings').upsert(payload,{onConflict:'singleton'});
   if(error)return reportError(error,'Não foi possível salvar as configurações de recebimento.');
@@ -316,9 +319,9 @@ function renderCart(){
   if(items.length===1&&!first){
     firstPanel=`<div class="note"><b>Primeira peça: pagamento obrigatório.</b><br>Escolha a forma informada pela cliente durante a live. As próximas peças só serão liberadas após a aprovação do Mercado Pago.<div class="formgrid"><div class="field"><label for="firstPayMethod">Forma de pagamento</label><select id="firstPayMethod"><option value="pix">Pix</option><option value="card">Cartão de crédito</option></select></div></div><button onclick="createFirstItemCheckout('${cid}')">Gerar cobrança e abrir WhatsApp</button></div>`;
   }else if(first?.status==='pending'){
-    firstPanel=`<div class="note"><b>Primeira peça aguardando pagamento.</b><br>Peça: ${money(first.base_amount)} • Taxa do cartão: ${money(first.fee_amount)} • Total do link: ${money(first.amount)}<br>Forma: ${first.method==='card'?'Cartão de crédito':'Pix'}<br><button class="secondary" onclick="sendFirstPaymentWhatsApp('${cid}')">Abrir WhatsApp com o link novamente</button></div>`;
+    firstPanel=`<div class="note"><b>Primeira peça aguardando pagamento.</b><br>Peça: ${money(first.base_amount)} • Taxa de processamento: ${money(first.fee_amount)} • Total do link: ${money(first.amount)}<br>Forma: ${first.method==='card'?'Cartão de crédito':'Pix'}<br><button class="secondary" onclick="sendFirstPaymentWhatsApp('${cid}')">Abrir WhatsApp com o link novamente</button></div>`;
   }else if(first?.status==='paid'){
-    firstPanel=`<div class="note"><b>Primeira peça paga e aprovada.</b><br>Crédito da peça já pago: ${money(first.base_amount)} • Taxa paga no cartão: ${money(first.fee_amount)}<br>As próximas peças estão liberadas. Saldo das peças: ${money(balance)}.</div>`;
+    firstPanel=`<div class="note"><b>Primeira peça paga e aprovada.</b><br>Crédito da peça já pago: ${money(first.base_amount)} • Taxa de processamento já paga: ${money(first.fee_amount)}<br>As próximas peças estão liberadas. Saldo das peças: ${money(balance)}.</div>`;
     if(balance>0&&balancePayment?.status==='pending'){
       firstPanel+=`<div class="note"><b>Cobrança Pix do saldo enviada, aguardando aprovação.</b><br>Valor do Pix: ${money(balancePayment.amount)}<br>Vencimento: ${balancePayment.due_at?new Date(balancePayment.due_at).toLocaleString('pt-BR'):'15h do próximo dia'}<br><button class="secondary" onclick="sendBagBalanceWhatsApp('${cid}')">Abrir WhatsApp com a cobrança novamente</button></div>`;
     }else if(balance>0){
@@ -341,7 +344,7 @@ function normalizeWhatsapp(phone){
 }
 function firstPaymentMessage(customer,first){
   const method=first.method==='card'?'cartão de crédito':'Pix';
-  return 'Olá, '+customer.name+'! 🤍 Para confirmar sua primeira peça na Garimpeira de Cabide, faça o pagamento obrigatório pelo link: '+first.checkout_url+'\n\nPeça: '+money(first.base_amount)+'\nTaxa do cartão: '+money(first.fee_amount)+'\nTotal a pagar agora: '+money(first.amount)+' ('+method+').\n\nAssim que o Mercado Pago aprovar o pagamento, o sistema libera automaticamente suas próximas compras na live. Obrigada!';
+  return 'Olá, '+customer.name+'! 🤍 Para confirmar sua primeira peça na Garimpeira de Cabide, faça o pagamento obrigatório pelo link: '+first.checkout_url+'\n\nPeça: '+money(first.base_amount)+'\nTaxa de processamento: '+money(first.fee_amount)+'\nTotal a pagar agora: '+money(first.amount)+' ('+method+').\n\nAssim que o Mercado Pago aprovar o pagamento, o sistema libera automaticamente suas próximas compras na live. Obrigada!';
 }
 function sendFirstPaymentWhatsApp(customerId){
   const meta=db.bagMeta[customerId],first=meta?.firstPayment,customer=db.clients.find(c=>c.id===customerId);
@@ -370,7 +373,7 @@ function balancePaymentMessage(customer,meta,items,payment){
   const firstPaid=meta.firstPayment?.status==='paid'?Number(meta.firstPayment.base_amount||0):0;
   const deadline=payment.due_at?new Date(payment.due_at).toLocaleString('pt-BR'):'15h do dia seguinte';
   const list=items.map(i=>'• '+i.description+' ('+i.size+'): '+money(i.price)).join('\n');
-  return 'Olá, '+customer.name+'! 🤍 Segue o fechamento da sua sacolinha da Garimpeira de Cabide.\n\n'+list+'\n\nSubtotal: '+money(subtotal)+'\nDesconto: '+money(meta.discount||0)+'\nTotal das peças: '+money(total)+'\nPrimeira peça já paga: − '+money(firstPaid)+'\nSaldo restante para pagamento por Pix: '+money(payment.base_amount)+'\n\nPague pelo link seguro do Mercado Pago: '+payment.checkout_url+'\n\nPrazo para pagamento: '+deadline+'. Obrigada pela preferência! 🤍';
+  return 'Olá, '+customer.name+'! 🤍 Segue o fechamento da sua sacolinha da Garimpeira de Cabide.\n\n'+list+'\n\nSubtotal: '+money(subtotal)+'\nDesconto: '+money(meta.discount||0)+'\nTotal das peças: '+money(total)+'\nPrimeira peça já paga: − '+money(firstPaid)+'\nSaldo das peças: '+money(payment.base_amount)+'\nTaxa de processamento Pix: '+money(payment.fee_amount)+'\nTotal do Pix: '+money(payment.amount)+'\n\nPague pelo link seguro do Mercado Pago: '+payment.checkout_url+'\n\nPrazo para pagamento: '+deadline+'. Obrigada pela preferência! 🤍';
 }
 function sendBagBalanceWhatsApp(customerId){
   const meta=db.bagMeta[customerId],payment=meta?.balancePayment,customer=db.clients.find(c=>c.id===customerId),items=db.bags[customerId]||[];
