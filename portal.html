@@ -99,6 +99,7 @@ function togglePixInstructions(){
 async function copyPixKey(){if(!paymentSettings?.pix_key)return;try{await navigator.clipboard.writeText(paymentSettings.pix_key);alert('Chave Pix copiada.');}catch(e){prompt('Copie a chave Pix:',paymentSettings.pix_key);}}
 function portalMsg(t){const n=$('bagActionMessage');if(n)n.textContent=t;}
 async function requestClose(bagId){
+ portalMsg('A cobrança será enviada pela Garimpeira no WhatsApp.');return;
  const method=$('paymentPreference').value;
  if(method==='card'){
   if(!confirm('Você será direcionada ao ambiente seguro do Mercado Pago para pagar com cartão. Continuar?'))return;
@@ -115,7 +116,7 @@ async function requestClose(bagId){
 // Ações usadas no HTML dinâmico da sacolinha.
 window.togglePixInstructions=togglePixInstructions;
 window.copyPixKey=copyPixKey;
-window.requestClose=requestClose;
+
 async function loadCustomerData(customer){
   const bags=await sb.from('bags').select('*').eq('customer_id',customer.id).order('created_at',{ascending:false});
   if(bags.error){$('currentBag').textContent=bags.error.message;return}
@@ -137,13 +138,18 @@ async function loadCustomerData(customer){
     const bag=open[0],list=openItems.filter(i=>i.bag_id===bag.id);
     const subtotal=list.reduce((s,i)=>s+Number(i.price_snapshot||0),0),discount=Number(bag.discount_amount||0),total=Math.max(0,subtotal-discount);
     currentBagTotal=total;
+    const firstPayment=payments.find(p=>p.bag_id===bag.id&&p.purpose==='first_item');
+    const paidFirst=firstPayment?.status==='paid';
+    const firstCredit=paidFirst?Number(firstPayment.base_amount||0):0;
+    const remaining=Math.max(0,total-firstCredit);
+    const paymentNote=!paidFirst
+      ? '<div class="note">A primeira peça precisa ser paga e aprovada para liberar novas compras. A Garimpeira enviará o link pelo WhatsApp.</div>'
+      : '<div class="line"><span>Primeira peça já paga</span><b>− '+money(firstCredit)+'</b></div><div class="line"><b>Saldo restante das peças</b><span class="total">'+money(remaining)+'</span></div><div class="note">A cobrança do saldo será enviada pela Garimpeira no WhatsApp. O prazo para pagamento é até as 15h do dia seguinte à live.</div>';
     $('currentBag').innerHTML=(list.map(i=>'<div class="line"><span>'+esc(i.description_snapshot)+'<br><small class="muted">'+esc(i.size_snapshot||'')+'</small></span><b>'+money(i.price_snapshot)+'</b></div>').join('')||'<div class="empty">Sua sacolinha ainda está vazia.</div>')+
       '<div class="line"><span>Subtotal</span><b>'+money(subtotal)+'</b></div>'+
       (discount?'<div class="line"><span>Desconto concedido pela Garimpeira</span><b>− '+money(discount)+'</b></div>':'')+
-      '<div class="line"><b>Total atual</b><span class="total">'+money(total)+'</span></div>'+
-      '<p class="muted">Escolha como deseja pagar e solicite o fechamento. A Garimpeira confirmará sua sacolinha.</p><p id="bagActionMessage" class="muted" role="status" aria-live="polite"></p>'+
-      (requests.some(r=>r.bag_id===bag.id&&r.status==='pending')?'<div class="note">Sua solicitação de fechamento já foi enviada. Aguarde a confirmação da Garimpeira.</div>':'<div class="row" style="margin-top:12px"><select id="paymentPreference" onchange="togglePixInstructions()"><option value="pix">Pix</option><option value="card">Cartão</option><option value="mixed">Pix + cartão</option></select><button onclick="requestClose(\''+bag.id+'\')">Solicitar fechamento</button></div><div id="pixInstructions"></div>');
-    togglePixInstructions();
+      '<div class="line"><b>Total das peças</b><span class="total">'+money(total)+'</span></div>'+
+      (paidFirst?paymentNote:'<p class="muted">Aguarde a mensagem da Garimpeira com o link para pagar a primeira peça.</p>'+paymentNote);
   }else $('currentBag').innerHTML='<div class="empty">Você não tem sacolinha aberta no momento.</div>';
   const closed=bags.data.filter(b=>b.status==='closed');
   $('history').innerHTML=closed.length?closed.map(b=>{
