@@ -181,7 +181,7 @@ async function loadCloud(){
   for(const bag of b.data){
     db.bags[bag.customer_id]=[];
     const firstPayment=db.payments.find(x=>x.bag_id===bag.id&&x.purpose==='first_item')||null;
-    db.bagMeta[bag.customer_id]={id:bag.id,discount:Number(bag.discount_amount||0),reason:bag.discount_reason||'',firstPayment};
+    const balancePayment=db.payments.find(x=>x.bag_id===bag.id&&x.purpose==='bag_balance')||null;\n    db.bagMeta[bag.customer_id]={id:bag.id,discount:Number(bag.discount_amount||0),reason:bag.discount_reason||'',firstPayment,balancePayment};
   }
   for(const req of cr.data) db.closeRequests[req.bag_id]=req;
   for(const item of bi.data){
@@ -308,20 +308,28 @@ function renderCart(){
   const rows=items.map(item=>{subtotal+=Number(item.price||0);return `<div class="statline"><span>${esc(item.description)}<br><small>${esc(item.size)} • ${money(item.price)}</small></span><button class="danger" onclick="removeBagItem('${cid}','${item.id}')">Remover</button></div>`;}).join('');
   const discount=Number(meta?.discount||0),total=Math.max(0,subtotal-discount),first=meta?.firstPayment;
   const paidCredit=first?.status==='paid'?Number(first.base_amount||0):0;
+  const balance=Math.max(0,total-paidCredit),balancePayment=meta?.balancePayment;
   let firstPanel='';
   if(items.length===1&&!first){
     firstPanel=`<div class="note"><b>Primeira peça: pagamento obrigatório.</b><br>Escolha a forma informada pela cliente durante a live. As próximas peças só serão liberadas após a aprovação do Mercado Pago.<div class="formgrid"><div class="field"><label for="firstPayMethod">Forma de pagamento</label><select id="firstPayMethod"><option value="pix">Pix</option><option value="card">Cartão de crédito</option></select></div></div><button onclick="createFirstItemCheckout('${cid}')">Gerar cobrança e abrir WhatsApp</button></div>`;
   }else if(first?.status==='pending'){
     firstPanel=`<div class="note"><b>Primeira peça aguardando pagamento.</b><br>Peça: ${money(first.base_amount)} • Taxa do cartão: ${money(first.fee_amount)} • Total do link: ${money(first.amount)}<br>Forma: ${first.method==='card'?'Cartão de crédito':'Pix'}<br><button class="secondary" onclick="sendFirstPaymentWhatsApp('${cid}')">Abrir WhatsApp com o link novamente</button></div>`;
   }else if(first?.status==='paid'){
-    firstPanel=`<div class="note"><b>Primeira peça paga e aprovada.</b><br>Crédito da peça já pago: ${money(first.base_amount)} • Taxa paga no cartão: ${money(first.fee_amount)}<br>As próximas peças estão liberadas. Saldo das peças: ${money(Math.max(0,total-paidCredit))}.</div>`;
+    firstPanel=`<div class="note"><b>Primeira peça paga e aprovada.</b><br>Crédito da peça já pago: ${money(first.base_amount)} • Taxa paga no cartão: ${money(first.fee_amount)}<br>As próximas peças estão liberadas. Saldo das peças: ${money(balance)}.</div>`;
+    if(balance>0&&balancePayment?.status==='pending'){
+      firstPanel+=`<div class="note"><b>Cobrança do saldo enviada, aguardando pagamento.</b><br>Saldo das peças: ${money(balancePayment.base_amount)} • Taxa: ${money(balancePayment.fee_amount)} • Total do link: ${money(balancePayment.amount)}<br>Vencimento: ${balancePayment.due_at?new Date(balancePayment.due_at).toLocaleString('pt-BR'):'15h do próximo dia'}<br><button class="secondary" onclick="sendBagBalanceWhatsApp('${cid}')">Abrir WhatsApp com a cobrança novamente</button></div>`;
+    }else if(balance>0){
+      firstPanel+=`<div class="note"><b>Saldo restante para cobrar: ${money(balance)}</b><div class="formgrid"><div class="field"><label for="balancePayMethod">Forma de pagamento do saldo</label><select id="balancePayMethod"><option value="pix">Pix</option><option value="card">Cartão de crédito</option></select></div></div><button onclick="createBagBalanceCheckout('${cid}')">Gerar cobrança do saldo e abrir WhatsApp</button><p class="small-muted">O link vence às 15h do dia seguinte à geração, conforme a regra da Garimpeira.</p></div>`;
+    }else{
+      firstPanel+=`<div class="note">A primeira peça já quitou o total das peças. Não há saldo restante para cobrar.</div>`;
+    }
   }else if(first?.status==='failed'||first?.status==='cancelled'){
     firstPanel=`<div class="note">A cobrança anterior não foi concluída. Gere uma nova cobrança para liberar as próximas peças.</div><div class="formgrid"><div class="field"><label for="firstPayMethod">Forma de pagamento</label><select id="firstPayMethod"><option value="pix">Pix</option><option value="card">Cartão de crédito</option></select></div></div><button onclick="createFirstItemCheckout('${cid}')">Gerar nova cobrança e abrir WhatsApp</button>`;
   }
   el('cart').innerHTML=(rows||'<div class="empty">Esta sacolinha está vazia.</div>')+
     `<div class="statline"><span>Subtotal</span><b>${money(subtotal)}</b></div><div class="statline"><span>Desconto administrativo</span><b>${money(discount)}</b></div><div class="statline"><b>Total das peças</b><b>${money(total)}</b></div>`+
     firstPanel+
-    (meta?`<div class="row" style="margin-top:12px"><button class="secondary" onclick="setBagDiscount('${cid}')">Conceder / alterar desconto</button><button onclick="closeBag('${cid}')" ${items.length&&(!first||first.status==='paid')?'':'disabled'}>Fechar sacolinha e registrar pagamento</button></div>`:'');
+    (meta?`<div class="row" style="margin-top:12px"><button class="secondary" onclick="setBagDiscount('${cid}')">Conceder / alterar desconto</button><button onclick="closeBag('${cid}')" ${items.length&&(!first||first.status==='paid')?'':'disabled'}>Registrar pagamento recebido manualmente</button></div>`:'');
 }
 function normalizeWhatsapp(phone){
   let digits=String(phone||'').replace(/\D/g,'');
@@ -337,53 +345,83 @@ function sendFirstPaymentWhatsApp(customerId){
   if(!first?.checkout_url||!customer?.phone)return alert('Não encontrei o link ou o WhatsApp cadastrado desta cliente.');
   window.open('https://wa.me/'+normalizeWhatsapp(customer.phone)+'?text='+encodeURIComponent(firstPaymentMessage(customer,first)),'_blank');
 }
-async function createFirstItemCheckout(customerId){
-  const meta=db.bagMeta[customerId],customer=db.clients.find(c=>c.id===customerId),method=el('firstPayMethod')?.value;
+function balancePaymentMessage(customer,meta,items,payment){
+  const subtotal=items.reduce((sum,item)=>sum+Number(item.price||0),0);
+  const total=Math.max(0,subtotal-Number(meta.discount||0));
+  const firstPaid=meta.firstPayment?.status==='paid'?Number(meta.firstPayment.base_amount||0):0;
+  const deadline=payment.due_at?new Date(payment.due_at).toLocaleString('pt-BR'):'15h do dia seguinte';
+  const list=items.map(i=>'• '+i.description+' ('+i.size+'): '+money(i.price)).join('\n');
+  return 'Olá, '+customer.name+'! 🤍 Segue o fechamento da sua sacolinha da Garimpeira de Cabide.\n\n'+list+'\n\nSubtotal: '+money(subtotal)+'\nDesconto: '+money(meta.discount||0)+'\nTotal das peças: '+money(total)+'\nPrimeira peça já paga: − '+money(firstPaid)+'\nSaldo restante: '+money(payment.base_amount)+'\nTaxa do cartão: '+money(payment.fee_amount)+'\nTotal para pagar: '+money(payment.amount)+' ('+(payment.method==='card'?'cartão de crédito':'Pix')+').\n\nPague pelo link seguro: '+payment.checkout_url+'\n\nPrazo para pagamento: '+deadline+'. Obrigada pela preferência! 🤍';
+}
+function sendBagBalanceWhatsApp(customerId){
+  const meta=db.bagMeta[customerId],payment=meta?.balancePayment,customer=db.clients.find(c=>c.id===customerId),items=db.bags[customerId]||[];
+  if(!payment?.checkout_url||!customer?.phone)return alert('Não encontrei o link ou o WhatsApp cadastrado desta cliente.');
+  window.open('https://wa.me/'+normalizeWhatsapp(customer.phone)+'?text='+encodeURIComponent(balancePaymentMessage(customer,meta,items,payment)),'_blank');
+}
+async function createBagBalanceCheckout(customerId){
+  const meta=db.bagMeta[customerId],customer=db.clients.find(c=>c.id===customerId),method=el('balancePayMethod')?.value;
   if(!meta?.id||!customer)return alert('Não encontrei a sacolinha ou a cliente.');
   if(!customer.phone)return alert('Cadastre o WhatsApp da cliente antes de enviar a cobrança.');
   if(!['pix','card'].includes(method))return alert('Escolha Pix ou cartão.');
   if(method==='card'&&!(Number(db.paymentSettings?.card_fee_percent)>0))return alert('Configure a taxa efetiva do cartão na aba Pagamentos antes de gerar a cobrança.');
   const wa=window.open('about:blank','_blank');
-  const {data,error}=await sb.functions.invoke('admin-create-first-item-checkout',{body:{bag_id:meta.id,method}});
-  if(error||data?.error||!data?.init_point){if(wa)wa.close();return alert(data?.error||error?.message||'Não foi possível gerar a cobrança.');}
+  const {data,error}=await sb.functions.invoke('admin-create-bag-balance-checkout',{body:{bag_id:meta.id,method}});
+  if(error||data?.error||!data?.init_point){if(wa)wa.close();return alert(data?.error||error?.message||'Não foi possível gerar a cobrança do saldo.');}
   await loadCloud();
-  const fresh=db.bagMeta[customerId]?.firstPayment;
+  const fresh=db.bagMeta[customerId]?.balancePayment;
   if(!fresh?.checkout_url){if(wa)wa.close();return alert('O link foi criado, mas não apareceu no painel. Atualize e confira a cobrança antes de enviar.');}
-  const phone=normalizeWhatsapp(customer.phone);
-  const message=firstPaymentMessage(customer,fresh);
-  if(wa)wa.location.href='https://wa.me/'+phone+'?text='+encodeURIComponent(message);
+  const message=balancePaymentMessage(customer,db.bagMeta[customerId],db.bags[customerId]||[],fresh);
+  if(wa)wa.location.href='https://wa.me/'+normalizeWhatsapp(customer.phone)+'?text='+encodeURIComponent(message);
   else alert('Cobrança criada. Link: '+fresh.checkout_url+'\nAbra o WhatsApp da cliente e envie manualmente.');
 }
 function parseMoneyInput(value){const s=String(value).trim().replaceAll(' ','');return Number(s.includes(',')?s.split('.').join('').replace(',','.'):s);}
 async function setBagDiscount(customerId){
   const meta=db.bagMeta[customerId];if(!meta)return alert('Esta cliente ainda não possui sacolinha aberta.');
   const subtotal=(db.bags[customerId]||[]).reduce((sum,item)=>sum+Number(item.price||0),0);
-  const raw=prompt(`Subtotal: ${money(subtotal)}\nInforme o desconto em reais (ex.: 10,00). Digite 0 para retirar o desconto:`,String(meta.discount||0).replace('.',','));
-  if(raw===null)return;
-  const amount=parseMoneyInput(raw);
-  if(!Number.isFinite(amount)||amount<0||amount>subtotal)return alert('Informe um desconto válido, sem ultrapassar o subtotal.');
+  const mode=prompt('Como deseja conceder o desconto? Digite R para valor em reais ou % para percentual:','R');if(mode===null)return;
+  const raw=prompt(mode.trim()==='%'?'Informe o percentual de desconto (ex.: 10):':'Informe o desconto em reais (ex.: 10,00).',String(meta.discount||0).replace('.',','));if(raw===null)return;
+  const value=parseMoneyInput(raw);
+  if(!Number.isFinite(value)||value<0)return alert('Informe um desconto válido.');
+  const amount=mode.trim()==='%'?Math.round(subtotal*value)/100:Math.round(value*100)/100;
+  if(amount>subtotal)return alert('O desconto não pode ultrapassar o subtotal.');
   const reason=prompt('Motivo do desconto (opcional):',meta.reason||'');if(reason===null)return;
   const {error}=await sb.rpc('admin_set_bag_discount',{p_bag_id:meta.id,p_discount_amount:amount,p_reason:reason.trim()||null});
   if(error)return reportError(error,'Não foi possível registrar o desconto.');
-  await loadCloud();alert('Desconto administrativo registrado.');
+  await loadCloud();alert('Desconto administrativo registrado: '+money(amount)+'.');
 }
 async function closeBag(customerId){
   const meta=db.bagMeta[customerId],items=db.bags[customerId]||[];if(!meta||!items.length)return alert('A sacolinha está vazia.');
-  const subtotal=items.reduce((sum,item)=>sum+Number(item.price||0),0),total=Math.max(0,subtotal-Number(meta.discount||0));
-  const requested=db.closeRequests[meta.id];const suggested=requested?.payment_method==='pix'?'PIX':requested?.payment_method==='card'?'CARTAO':requested?.payment_method==='mixed'?'MISTO':'PIX';
-  const methodRaw=prompt(`Total a receber: ${money(total)}\nForma escolhida pela cliente: ${suggested}\nConfirme ou altere: PIX, CARTAO ou MISTO:`,suggested);if(methodRaw===null)return;
-  const methodMap={PIX:'pix',CARTAO:'card',CARTÃO:'card',MISTO:'mixed'};const method=methodMap[methodRaw.trim().toUpperCase()];
-  if(!method)return alert('Forma inválida. Digite PIX, CARTAO ou MISTO.');
-  let pix=0,card=0;
-  if(method==='pix')pix=total;
-  else if(method==='card')card=total;
-  else{
-    const p=prompt('Quanto será pago no Pix? Use vírgula ou ponto para centavos:');if(p===null)return;
-    const k=prompt('Quanto será pago no cartão? Use vírgula ou ponto para centavos:');if(k===null)return;
-    pix=parseMoneyInput(p);card=parseMoneyInput(k);
-    if(!Number.isFinite(pix)||!Number.isFinite(card)||Math.round((pix+card)*100)!==Math.round(total*100))return alert('A soma do Pix e do cartão precisa ser igual ao total.');
+  const subtotal=items.reduce((sum,item)=>sum+Number(item.price||0),0);
+  const total=Math.max(0,subtotal-Number(meta.discount||0));
+  const paidCredit=meta.firstPayment?.status==='paid'?Number(meta.firstPayment.base_amount||0):0;
+  const balance=Math.max(0,total-paidCredit);
+  if(meta.firstPayment?.status!=='paid')return alert('A primeira peça precisa estar paga e aprovada antes do fechamento.');
+  if(balance===0){
+    if(!confirm('Não há saldo restante. Deseja finalizar a sacolinha usando o crédito da primeira peça já paga?'))return;
+    const {error}=await sb.rpc('admin_close_bag',{p_bag_id:meta.id,p_method:'pix',p_pix_amount:0,p_card_amount:0});
+    if(error)return reportError(error,'Não foi possível finalizar a sacolinha.');
+    await loadCloud();return alert('Sacolinha finalizada. A primeira peça já estava paga.');
   }
-  if(!confirm(`ATENÇÃO: confirme somente depois de verificar o recebimento no aplicativo/extrato correspondente.\nTotal: ${money(total)}\nPagamento: ${method==='pix'?'Pix':method==='card'?'Cartão':'Misto'}\n\nDeseja registrar como recebido e fechar?`))return;
+  const methodRaw=prompt('Saldo das peças a receber: '+money(balance)+'\nDigite PIX, CARTAO ou MISTO:','PIX');if(methodRaw===null)return;
+  const methodMap={PIX:'pix',CARTAO:'card','CARTÃO':'card',MISTO:'mixed'};
+  const method=methodMap[methodRaw.trim().toUpperCase()];
+  if(!method)return alert('Forma inválida. Digite PIX, CARTAO ou MISTO.');
+  const rate=Number(db.paymentSettings?.card_fee_percent||0);
+  let pix=0,card=0,cardFee=0;
+  if(method==='pix')pix=balance;
+  else if(method==='card'){
+    if(rate<=0)return alert('Configure a taxa efetiva do cartão na aba Pagamentos.');
+    card=Math.round(balance*(1+rate/100)*100)/100;cardFee=card-balance;
+  }else{
+    if(rate<=0)return alert('Configure a taxa efetiva do cartão na aba Pagamentos.');
+    const p=prompt('Quanto do saldo será pago no Pix? (valor das peças, sem taxa):');if(p===null)return;
+    pix=parseMoneyInput(p);
+    if(!Number.isFinite(pix)||pix<0||pix>=balance)return alert('Informe um valor de Pix entre zero e o saldo total.');
+    const cardBase=Math.round((balance-pix)*100)/100;
+    card=Math.round(cardBase*(1+rate/100)*100)/100;cardFee=card-cardBase;
+  }
+  const totalCharge=pix+card;
+  if(!confirm('Confirme somente depois de receber o valor no meio escolhido.\nSaldo das peças: '+money(balance)+'\nTaxa do cartão: '+money(cardFee)+'\nTotal recebido: '+money(totalCharge)+'\n\nRegistrar e finalizar a sacolinha?'))return;
   const {error}=await sb.rpc('admin_close_bag',{p_bag_id:meta.id,p_method:method,p_pix_amount:pix,p_card_amount:card});
   if(error)return reportError(error,'Não foi possível fechar a sacolinha.');
   await loadCloud();alert('Sacolinha fechada e pagamento registrado.');
