@@ -413,7 +413,7 @@ async function addProduct(){
       return assigned+returned<Number(l.received_quantity);
     });
     if(lot)supplierLotId=lot.id;
-    else if(db.supplierLots.some(l=>l.supplier_id===supplierId&&l.acquisition_type===type))return alert('Não há lote aberto com este valor por peça. Registre a entrada do novo lote ou confira o custo.');
+    else if(db.supplierLots.some(l=>l.supplier_id===supplierId))return alert('Não há lote aberto desta fornecedora com esta modalidade e valor por peça. Registre a entrada do novo lote antes de cadastrar as peças, ou confira os dados do lote.');
   }
   const payload={description:desc,short_code:short,size:el('pSize').value.trim()||null,cost,sale_price:price,supplier_id:supplierId,supplier_lot_id:supplierLotId,acquisition_type:type,barcode,status:'available'};
   const {error}=await sb.from('products').insert(payload);
