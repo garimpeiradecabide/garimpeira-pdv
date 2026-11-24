@@ -97,7 +97,9 @@ async function requestDelivery(kind){
   if(!activeCustomer||!deliveryBagId)return;
   const label=kind==='moto'?'moto entrega':'simulação de frete';
   const message='Olá, Garimpeira! 🤍 A cliente '+activeCustomer.name+' solicitou '+label+'. O pedido já foi registrado no Garimpeira PDV.';
-  const url='https://wa.me/5511916120633?text='+encodeURIComponent(message);
+  const fallback='https://wa.me/5511916120633?text='+encodeURIComponent(message);
+  // No Android, direciona diretamente ao WhatsApp Business (sem confundir com o WhatsApp pessoal).
+  const url='intent://send?phone=5511916120633&text='+encodeURIComponent(message)+'#Intent;scheme=whatsapp;package=com.whatsapp.w4b;S.browser_fallback_url='+encodeURIComponent(fallback)+';end';
   // Abre o destino diretamente durante o toque, antes da operação assíncrona,
   // para evitar que o navegador do celular bloqueie o redirecionamento.
   const tab=window.open(url,'_blank');
