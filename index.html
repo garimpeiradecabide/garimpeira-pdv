@@ -113,7 +113,7 @@ table{width:100%;border-collapse:collapse;margin-top:12px;background:white}th,td
     </div><div class="row"><button onclick="scanProduct()">Adicionar código</button><button class="secondary" onclick="scanShort()">Adicionar código curto</button><button class="secondary" onclick="show('clients')">Cadastrar cliente</button></div>
     <div id="cart"></div><div class="note">Cada peça reservada é registrada no banco e fica vinculada à sacolinha da cliente.</div>
   </div></section>
-  <section id="bags" class="panel"><div class="card"><h3>Sacolinhas permanentes</h3><div id="bagList"></div></div></section>
+  <section id="bags" class="panel"><div class="card"><h3>Solicitações de fechamento</h3><p class="sub">Pedidos enviados pelas clientes, aguardando conferência da Garimpeira.</p><div id="closeRequestList"></div></div><div class="card"><h3>Sacolinhas permanentes</h3><div id="bagList"></div></div></section>
   <section id="payments" class="panel"><div class="card"><h3>Configuração de recebimento Pix</h3><p class="sub">Altere a chave aqui quando ela voltar do PicPay para o Mercado Pago. A mudança será refletida no portal das clientes.</p><div class="formgrid">
     <div class="field"><label for="pixKey">Chave Pix</label><input id="pixKey" placeholder="Chave Pix atual"></div>
     <div class="field"><label for="pixKeyType">Tipo de chave</label><select id="pixKeyType"><option value="celular">Celular</option><option value="cpf">CPF</option><option value="cnpj">CNPJ</option><option value="email">E-mail</option><option value="aleatoria">Aleatória</option></select></div>
@@ -259,7 +259,7 @@ function render(){
   el('mClients').textContent=db.clients.length;el('mProducts').textContent=db.products.length;
   el('mAvailable').textContent=db.products.filter(p=>p.status==='Disponível').length;
   el('mBags').textContent=Object.values(db.bags).filter(a=>a.length).length;
-  renderClients();renderSuppliers();renderProducts();renderStock();renderSelectors();renderCart();renderBags();
+  renderClients();renderSuppliers();renderProducts();renderStock();renderSelectors();renderCart();renderBags();renderCloseRequests();
 }
 function renderClients(){
   const q=(el('clientSearch').value||'').toLowerCase();
@@ -345,6 +345,17 @@ function renderBags(){
     const request=db.closeRequests[meta?.id];const payLabel=request?.payment_method==='pix'?'Pix':request?.payment_method==='card'?'Cartão':request?.payment_method==='mixed'?'Pix + cartão':'';
     return `<div class="statline"><span><b>${esc(customer?customer.name:'Cliente')}</b><br><small>${items.length} peça(s) • desconto ${money(meta?.discount||0)}${request?' • <b>Solicitou fechamento: '+payLabel+'</b>':''}</small></span><span><b>${money(finalTotal)}</b><br><button class="secondary" onclick="el('liveClient').value='${cid}';show('live')">Abrir sacolinha</button></span></div>`;
   }).join('')||'<div class="empty">Nenhuma sacolinha aberta.</div>';
+}
+function renderCloseRequests(){
+  const pending=Object.values(db.closeRequests||{}).filter(r=>r.status==='pending').sort((a,b)=>new Date(b.requested_at)-new Date(a.requested_at));
+  el('closeRequestList').innerHTML=pending.map(req=>{
+    const entry=Object.entries(db.bagMeta).find(([,meta])=>meta.id===req.bag_id);
+    const cid=entry?.[0],customer=db.clients.find(x=>x.id===cid);
+    const items=cid?(db.bags[cid]||[]):[];
+    const method=req.payment_method==='pix'?'Pix':req.payment_method==='card'?'Cartão':'Pix + cartão';
+    const date=req.requested_at?new Date(req.requested_at).toLocaleString('pt-BR'):'Data não informada';
+    return '<div class="statline"><span><b>'+esc(customer?.name||'Cliente não identificada')+'</b><br><small>'+esc(customer?.phone||'')+' • '+method+' • '+date+'</small><br><small>'+(items.length?items.length+' peça(s) na sacolinha':'Solicitação recebida, mas a sacolinha está sem peças reservadas.')+'</small></span><span class="pill">Aguardando confirmação</span></div>';
+  }).join('')||'<div class="empty">Nenhuma solicitação pendente.</div>';
 }
 function label(productId){
   const p=db.products.find(x=>x.id===productId);if(!p)return alert('Produto não encontrado.');
