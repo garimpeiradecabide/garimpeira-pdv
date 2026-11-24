@@ -618,7 +618,7 @@ function renderSales(){
     const customer=db.clients.find(c=>c.id===sale.customerId);
     const subtotal=sale.items.reduce((sum,item)=>sum+item.price,0);
     const total=Math.max(0,subtotal-sale.discount);
-    const payments=(db.payments||[]).filter(p=>p.bag_id===sale.id).sort((a,b)=>new Date(a.created_at||0)-new Date(b.created_at||0));
+    const payments=(db.payments||[]).filter(p=>p.bag_id===sale.id&&!p.superseded_at&&!['failed','cancelled'].includes(p.status)).sort((a,b)=>new Date(a.created_at||0)-new Date(b.created_at||0));
     const paymentLabels={paid:'Pago e aprovado',pending:'Pendente',failed:'Não aprovado',cancelled:'Cancelado',refunded:'Estornado'};
     const methodLabels={pix:'Pix',card:'Cartão',cash:'Dinheiro',manual:'Registro manual'};
     const paymentHtml=payments.map(p=>{
