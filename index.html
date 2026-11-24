@@ -414,14 +414,14 @@ async function closeBag(customerId){
   if(method==='pix')pix=balance;
   else if(method==='card'){
     if(rate<=0)return alert('Configure a taxa efetiva do cartão na aba Pagamentos.');
-    card=Math.round(balance*(1+rate/100)*100)/100;cardFee=card-balance;
+    card=Math.round(balance/(1-rate/100)*100)/100;cardFee=card-balance;
   }else{
     if(rate<=0)return alert('Configure a taxa efetiva do cartão na aba Pagamentos.');
     const p=prompt('Quanto do saldo será pago no Pix? (valor das peças, sem taxa):');if(p===null)return;
     pix=parseMoneyInput(p);
     if(!Number.isFinite(pix)||pix<=0||pix>=balance)return alert('Informe um valor de Pix maior que zero e menor que o saldo total.');
     const cardBase=Math.round((balance-pix)*100)/100;
-    card=Math.round(cardBase*(1+rate/100)*100)/100;cardFee=card-cardBase;
+    card=Math.round(cardBase/(1-rate/100)*100)/100;cardFee=card-cardBase;
   }
   const totalCharge=pix+card;
   if(!confirm('Confirme somente depois de receber o valor no meio escolhido.\nSaldo das peças: '+money(balance)+'\nTaxa do cartão: '+money(cardFee)+'\nTotal recebido: '+money(totalCharge)+'\n\nRegistrar e finalizar a sacolinha?'))return;
