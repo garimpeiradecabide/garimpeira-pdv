@@ -834,7 +834,7 @@ function renderSales(){
     }).join('')||'<div class="empty">Nenhum pagamento vinculado a esta venda.</div>';
     const itemHtml=sale.items.map(item=>'<div class="statline"><span>'+esc(item.description)+'<br><small>'+esc(item.size||'Tamanho não informado')+'</small></span><b>'+money(item.price)+'</b></div>').join('');
     const closed=sale.closedAt?new Date(sale.closedAt).toLocaleString('pt-BR'):'Data não informada';
-    return '<details class="card" style="margin:12px 0"><summary style="cursor:pointer"><b>'+esc(customer?.name||'Cliente não identificada')+'</b><br><small>'+closed+' • '+sale.items.length+' peça(s)</small><br><b>'+money(total)+'</b></summary><div style="margin-top:12px"><b>Nota da compra</b>'+itemHtml+'<div class="statline"><span>Subtotal</span><b>'+money(subtotal)+'</b></div>'+(sale.discount>0?'<div class="statline"><span>Desconto</span><b>− '+money(sale.discount)+'</b></div>':'')+'<div class="statline"><b>Total da venda</b><b>'+money(total)+'</b></div><h4>Histórico de pagamentos</h4>'+paymentHtml+'<div style="margin-top:14px"><button class="danger" onclick="deleteCompletedSale(\''+sale.id+'\')">Excluir venda e devolver peças ao estoque</button><p class="small-muted">Se a cliente já pagou, faça a devolução do dinheiro por fora antes de excluir. A exclusão remove a venda dos relatórios e devolve as peças ao estoque.</p></div></div></details>';
+    return '<details class="card" style="margin:12px 0"><summary style="cursor:pointer"><b>'+esc(customer?.name||'Cliente não identificada')+'</b><br><small>'+closed+' • '+sale.items.length+' peça(s)</small><br><b>'+money(total)+'</b></summary><div style="margin-top:12px"><b>Nota da compra</b>'+itemHtml+'<div class="statline"><span>Subtotal</span><b>'+money(subtotal)+'</b></div>'+(sale.discount>0?'<div class="statline"><span>Desconto</span><b>− '+money(sale.discount)+'</b></div>':'')+'<div class="statline"><b>Total da venda</b><b>'+money(total)+'</b></div><h4>Histórico de pagamentos</h4>'+paymentHtml+'<div style="margin-top:14px"><button class="danger" onclick="deleteCompletedSale(\''+sale.id+'\')">Excluir venda e devolver peças ao estoque</button><p class="small-muted">Se a cliente já pagou, faça a devolução do dinheiro por fora antes de excluir. A exclusão devolve as peças ao estoque e retira a venda e o repasse correspondente do controle da fornecedora.</p></div></div></details>';
   }).join('');
   el('salesList').innerHTML=rows||'<div class="empty">Nenhuma venda concluída encontrada.</div>';
 }
@@ -843,12 +843,12 @@ async function deleteCompletedSale(bagId){
   if(!sale)return alert('Não encontrei esta venda concluída. Atualize o painel.');
   const customer=db.clients.find(row=>row.id===sale.customerId);
   const names=sale.items.map(item=>item.description).join(', ');
-  const confirmation='ATENÇÃO — CONFIRME A DEVOLUÇÃO\n\nA venda de '+(customer?.name||'cliente')+' será excluída definitivamente.\n\nPeças: '+names+'\n\nAs peças voltarão para o estoque, e a venda deixará de contar no faturamento e nos relatórios de lucro. Os pagamentos serão removidos do histórico desta sacolinha.\n\nSe a cliente já pagou, confirme que você JÁ DEVOLVEU o dinheiro por fora (Pix, banco ou cartão). O PDV não faz o estorno financeiro.\n\nDeseja continuar?';
+  const confirmation='ATENÇÃO — CONFIRME A DEVOLUÇÃO\n\nA venda de '+(customer?.name||'cliente')+' será excluída definitivamente.\n\nPeças: '+names+'\n\nAs peças voltarão para o estoque. A venda será retirada do faturamento e dos relatórios de lucro, e as peças deixarão de constar como vendidas/reservadas no controle da fornecedora, recalculando o valor devido. Os pagamentos serão removidos do histórico desta sacolinha; pagamentos já registrados à fornecedora permanecem no histórico.\n\nSe a cliente já pagou, confirme que você JÁ DEVOLVEU o dinheiro por fora (Pix, banco ou cartão). O PDV não faz o estorno financeiro.\n\nDeseja continuar?';
   if(!confirm(confirmation))return;
   const {data,error}=await sb.rpc('admin_delete_completed_sale',{p_bag_id:bagId});
   if(error)return reportError(error,'Não foi possível excluir esta venda. Confira se ela ainda está concluída e tente novamente.');
   await loadCloud();
-  alert('Venda excluída. As peças foram devolvidas ao estoque e não aparecem mais no faturamento ou lucro.');
+  alert('Venda excluída. As peças voltaram ao estoque, saíram do controle de vendidas/reservadas da fornecedora e foram retiradas do faturamento e lucro.');
 }
 function renderCloseRequests(){
   const pending=Object.values(db.closeRequests||{}).filter(r=>r.status==='pending').sort((a,b)=>new Date(b.requested_at)-new Date(a.requested_at));
