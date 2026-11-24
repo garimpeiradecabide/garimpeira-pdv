@@ -109,10 +109,10 @@ async function loadCustomerData(customer){
   if(open.length){
     const bag=open[0],list=openItems.filter(i=>i.bag_id===bag.id);
     const subtotal=list.reduce((s,i)=>s+Number(i.price_snapshot||0),0),discount=Number(bag.discount_amount||0),total=Math.max(0,subtotal-discount);
-    const firstPayment=payments.find(p=>p.bag_id===bag.id&&p.purpose==='first_item');
+    const firstPayment=payments.find(p=>p.bag_id===bag.id&&p.purpose==='first_item'&&!p.superseded_at);
     const paidFirst=firstPayment?.status==='paid';
     const firstCredit=paidFirst?Number(firstPayment.base_amount||0):0;
-    const balancePayments=payments.filter(p=>p.bag_id===bag.id&&p.purpose==='bag_balance'&&p.status==='paid');
+    const balancePayments=payments.filter(p=>p.bag_id===bag.id&&p.purpose==='bag_balance'&&p.status==='paid'&&!p.superseded_at);
     const balancePaid=balancePayments.reduce((sum,p)=>sum+Number(p.base_amount||0),0);
     const remaining=Math.max(0,total-firstCredit-balancePaid);
     const paymentNote=!paidFirst
@@ -126,7 +126,7 @@ async function loadCustomerData(customer){
   }else $('currentBag').innerHTML='<div class="empty">Você não tem sacolinha aberta no momento.</div>';
   const closed=bags.data.filter(b=>b.status==='closed');
   $('history').innerHTML=closed.length?closed.map(b=>{
-    const its=items.filter(i=>i.bag_id===b.id),paid=payments.filter(p=>p.bag_id===b.id);
+    const its=items.filter(i=>i.bag_id===b.id),paid=payments.filter(p=>p.bag_id===b.id&&p.status==='paid'&&!p.superseded_at);
     return '<div class="line"><span><b>Compra de '+new Date(b.created_at).toLocaleDateString('pt-BR')+'</b><br><small class="muted">'+its.length+' peça(s) • '+paid.map(p=>esc(p.method)+' '+money(p.amount)).join(' + ')+'</small></span><b>'+money(its.reduce((s,i)=>s+Number(i.price_snapshot||0),0)-Number(b.discount_amount||0))+'</b></div>';
   }).join(''):'<div class="empty">Suas compras finalizadas aparecerão aqui.</div>';
   $('deliveries').innerHTML=deliveries.length?deliveries.map(d=>'<div class="line"><span><b>'+esc(d.status)+'</b><br><small class="muted">'+esc(d.address||'Endereço não informado')+(d.tracking_code?' • Rastreio: '+esc(d.tracking_code):'')+'</small></span><b>'+money(d.shipping_cost)+'</b></div>').join(''):'<div class="empty">Nenhuma entrega cadastrada.</div>';
