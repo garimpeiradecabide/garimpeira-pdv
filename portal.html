@@ -19,6 +19,7 @@ button.secondary{background:white;color:var(--green);border:1px solid var(--line
 .total{font-size:20px;font-weight:800;color:var(--green)}.pill{background:var(--pale);color:var(--green);border-radius:30px;padding:4px 9px;font-size:11px;font-weight:700}
 #message{font-size:13px;color:#8a5138;white-space:pre-wrap}.empty{text-align:center;padding:25px;color:var(--muted)}
 .delivery-done{display:inline-block;background:#dff3e3;color:#176b35;border:1px solid #8ed2a0;border-radius:999px;padding:9px 14px;font-weight:800;font-size:16px;line-height:1.4}
+.history-card{border:1px solid var(--line);border-radius:12px;padding:12px;margin:10px 0}.history-summary{display:flex;justify-content:space-between;align-items:center;gap:12px}.history-toggle{margin-top:8px}.history-details{background:#f8faf6;border-radius:10px;padding:10px 12px;margin-top:10px}.history-details .line{padding:8px 0}.history-details[hidden]{display:none}
 @media(max-width:520px){.card{padding:15px}h1{font-size:21px}}
 </style></head>
 <body>
@@ -168,8 +169,17 @@ async function loadCustomerData(customer){
   const closed=bags.data.filter(b=>b.status==='closed');
   $('history').innerHTML=closed.length?closed.map(b=>{
     const its=items.filter(i=>i.bag_id===b.id),paid=payments.filter(p=>p.bag_id===b.id&&p.status==='paid'&&!p.superseded_at);
-    return '<div class="line"><span><b>Compra de '+new Date(b.created_at).toLocaleDateString('pt-BR')+'</b><br><small class="muted">'+its.length+' peça(s) • '+paid.map(p=>esc(p.method)+' '+money(p.amount)).join(' + ')+'</small></span><b>'+money(its.reduce((s,i)=>s+Number(i.price_snapshot||0),0)-Number(b.discount_amount||0))+'</b></div>';
+    const subtotal=its.reduce((s,i)=>s+Number(i.price_snapshot||0),0),discount=Number(b.discount_amount||0),total=Math.max(0,subtotal-discount);
+    const details=its.map(i=>'<div class="line"><span>'+esc(i.description_snapshot||'Peça')+'<br><small class="muted">Tamanho: '+esc(i.size_snapshot||'Não informado')+'</small></span><b>'+money(i.price_snapshot)+'</b></div>').join('')||'<p class="muted">Nenhuma peça detalhada nesta compra.</p>';
+    return '<div class="history-card"><div class="history-summary"><span><b>Compra de '+new Date(b.created_at).toLocaleDateString('pt-BR')+'</b><br><small class="muted">'+its.length+' peça(s)</small></span><b class="total">'+money(total)+'</b></div><button type="button" class="secondary history-toggle" data-bag-id="'+esc(b.id)+'">Ver detalhes da compra</button><div class="history-details hidden" id="history-details-'+esc(b.id)+'">'+details+'<div class="line"><span>Subtotal</span><b>'+money(subtotal)+'</b></div>'+(discount>0?'<div class="line"><span>Desconto</span><b>− '+money(discount)+'</b></div>':'')+'<div class="line"><b>Total da compra</b><b class="total">'+money(total)+'</b></div>'+(paid.length?'<div class="line"><span>Pagamentos confirmados</span><b>'+paid.map(p=>esc(p.method)+' '+money(p.amount)).join(' + ')+'</b></div>':'')+'</div></div>';
   }).join(''):'<div class="empty">Suas compras finalizadas aparecerão aqui.</div>';
+  $('history').querySelectorAll('.history-toggle').forEach(button=>button.addEventListener('click',()=>{
+    const details=$('history-details-'+button.dataset.bagId);
+    if(!details)return;
+    const opening=details.classList.contains('hidden');
+    details.classList.toggle('hidden');
+    button.textContent=opening?'Ocultar detalhes':'Ver detalhes da compra';
+  }));
   const deliveryLabels={requested_moto:'Solicitação de moto entrega enviada',requested_shipping:'Solicitação de simulação de frete enviada',accepted:'Solicitação aceita • aguarde nosso contato',preparing:'Em preparação',shipped:'Enviado / em rota',delivered:'Entregue',pending:'Aguardando'};
   const deliveryForBag=deliveryBagId?deliveries.find(d=>d.bag_id===deliveryBagId):null;
   const existingRequest=!!deliveryForBag;
