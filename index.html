@@ -369,6 +369,19 @@ function renderCart(){
   const discount=Number(meta?.discount||0),total=Math.max(0,subtotal-discount),first=meta?.firstPayment;
   const paidCredit=first?.status==='paid'?Number(first.base_amount||0):0;
   const balance=Math.max(0,total-paidCredit-Number(meta?.balancePaid||0)),balancePayment=meta?.balancePayment;
+  const bagPayments=(db.payments||[]).filter(p=>p.bag_id===meta?.id).sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0));
+  const paidTotal=bagPayments.filter(p=>p.status==='paid').reduce((sum,p)=>sum+Number(p.base_amount??p.amount??0),0);
+  const pendingTotal=bagPayments.filter(p=>p.status==='pending').reduce((sum,p)=>sum+Number(p.amount||0),0);
+  const paymentRows=bagPayments.map(p=>{
+    const statusLabels={paid:'Pago e aprovado',pending:'Pendente',failed:'Não aprovado',cancelled:'Cancelado',refunded:'Estornado'};
+    const purposeLabels={first_item:'Primeira peça',bag_balance:'Saldo da sacolinha'};
+    const methodLabels={pix:'Pix',card:'Cartão',cash:'Dinheiro',manual:'Registro manual'};
+    const statusLabel=statusLabels[p.status]||String(p.status||'Status não informado');
+    const dateValue=p.paid_at||p.created_at;
+    const dateLabel=dateValue?new Date(dateValue).toLocaleString('pt-BR'):'Data não informada';
+    return `<div class="statline"><span><b>${esc(purposeLabels[p.purpose]||p.purpose||'Pagamento')}</b><br><small>${esc(methodLabels[p.method]||p.method||'Forma não informada')} • ${dateLabel}</small>${p.due_at&&p.status==='pending'?'<br><small>Vencimento: '+new Date(p.due_at).toLocaleString('pt-BR')+'</small>':''}</span><span style="text-align:right"><b>${money(p.amount)}</b><br><span class="pill">${esc(statusLabel)}</span>${p.status==='paid'&&Number(p.base_amount||0)!==Number(p.amount||0)?'<br><small>Valor considerado: '+money(p.base_amount)+'</small>':''}</span></div>`;
+  }).join('')||'<div class="empty">Nenhum pagamento registrado nesta sacolinha.</div>';
+  const paymentHistory=`<div class="note"><b>Resumo financeiro</b><br>Total confirmado: <b>${money(paidTotal)}</b><br>Valor aguardando pagamento: <b>${money(pendingTotal)}</b></div><div class="card" style="padding:12px;margin:10px 0"><b>Histórico de pagamentos</b>${paymentRows}</div>`;
   let firstPanel='';
   const customer=db.clients.find(c=>c.id===cid);
   const isTestCustomer=(customer?.name||'').trim().toLowerCase()==='jilo maria';
@@ -400,6 +413,7 @@ function renderCart(){
   }
   el('cart').innerHTML=(rows||'<div class="empty">Esta sacolinha está vazia.</div>')+
     `<div class="statline"><span>Subtotal</span><b>${money(subtotal)}</b></div><div class="statline"><span>Desconto administrativo</span><b>${money(discount)}</b></div><div class="statline"><b>Total das peças</b><b>${money(total)}</b></div>`+
+    paymentHistory+
     firstPanel+
     (meta?`<div class="row" style="margin-top:12px"><button class="secondary" onclick="setBagDiscount('${cid}')">Conceder / alterar desconto</button><button onclick="closeBag('${cid}')" ${items.length&&first?.status==='paid'&&balance===0?'':'disabled'}>Finalizar sacolinha quitada</button></div>`:'');
 }
