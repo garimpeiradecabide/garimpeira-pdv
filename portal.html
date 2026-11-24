@@ -43,11 +43,17 @@ button.secondary{background:white;color:var(--green);border:1px solid var(--line
 </main>
 <script>
 'use strict';
+const $=id=>document.getElementById(id);
+if(!window.supabase||typeof window.supabase.createClient!=='function'){
+  document.addEventListener('DOMContentLoaded',()=>{
+    const m=$('message');
+    if(m)m.textContent='Não foi possível carregar o serviço de acesso. Verifique sua conexão e atualize a página. Se persistir, avise a Garimpeira.';
+  });
+}else{
 const URL='https://gcyuvbakxswkjcyqscth.supabase.co';
 const KEY='sb_publishable_haoKT8vSzAEpxwfsapBM1A_4REUsg8T';
 const sb=window.supabase.createClient(URL,KEY);
 let paymentSettings=null,currentBagTotal=0;
-const $=id=>document.getElementById(id);
 const money=n=>Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function msg(t){$('message').textContent=t}
@@ -142,5 +148,6 @@ async function loadCustomerData(customer){
   $('deliveries').innerHTML=deliveries.length?deliveries.map(d=>'<div class="line"><span><b>'+esc(d.status)+'</b><br><small class="muted">'+esc(d.address||'Endereço não informado')+(d.tracking_code?' • Rastreio: '+esc(d.tracking_code):'')+'</small></span><b>'+money(d.shipping_cost)+'</b></div>').join(''):'<div class="empty">Nenhuma entrega cadastrada.</div>';
 }
 (async()=>{const {data:{session}}=await sb.auth.getSession();if(session)await startPortal()})();
+}
 </script>
 </body></html>
