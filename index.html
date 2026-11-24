@@ -346,6 +346,17 @@ function renderBags(){
     return `<div class="statline"><span><b>${esc(customer?customer.name:'Cliente')}</b><br><small>${items.length} peça(s) • desconto ${money(meta?.discount||0)}${request?' • <b>Solicitou fechamento: '+payLabel+'</b>':''}</small></span><span><b>${money(finalTotal)}</b><br><button class="secondary" onclick="el('liveClient').value='${cid}';show('live')">Abrir sacolinha</button></span></div>`;
   }).join('')||'<div class="empty">Nenhuma sacolinha aberta.</div>';
 }
+async function openCloseRequest(bagId){
+  const req=Object.values(db.closeRequests||{}).find(r=>r.bag_id===bagId&&r.status==='pending');
+  const entry=Object.entries(db.bagMeta).find(([,meta])=>meta.id===bagId);
+  const cid=entry?.[0],customer=db.clients.find(x=>x.id===cid);
+  const items=cid?(db.bags[cid]||[]):[];
+  if(!req)return alert('Esta solicitação não está mais pendente. Atualize o painel.');
+  if(!items.length)return alert('Esta sacolinha está sem peças reservadas. Não é possível confirmar o fechamento. Adicione primeiro as peças corretas à sacolinha e confira o pedido.');
+  const method=req.payment_method==='pix'?'PIX':req.payment_method==='card'?'CARTÃO':'PIX + CARTÃO';
+  alert('Solicitação de '+(customer?.name||'cliente')+'\nForma escolhida: '+method+'\nPeças reservadas: '+items.length+'\n\nConfira os itens e o pagamento antes de fechar. A confirmação final deve ser feita em Venda ao vivo, no botão de fechar sacolinha.');
+  if(cid){el('liveClient').value=cid;show('live');}
+}
 function renderCloseRequests(){
   const pending=Object.values(db.closeRequests||{}).filter(r=>r.status==='pending').sort((a,b)=>new Date(b.requested_at)-new Date(a.requested_at));
   el('closeRequestList').innerHTML=pending.map(req=>{
@@ -354,7 +365,7 @@ function renderCloseRequests(){
     const items=cid?(db.bags[cid]||[]):[];
     const method=req.payment_method==='pix'?'Pix':req.payment_method==='card'?'Cartão':'Pix + cartão';
     const date=req.requested_at?new Date(req.requested_at).toLocaleString('pt-BR'):'Data não informada';
-    return '<div class="statline"><span><b>'+esc(customer?.name||'Cliente não identificada')+'</b><br><small>'+esc(customer?.phone||'')+' • '+method+' • '+date+'</small><br><small>'+(items.length?items.length+' peça(s) na sacolinha':'Solicitação recebida, mas a sacolinha está sem peças reservadas.')+'</small></span><span class="pill">Aguardando confirmação</span></div>';
+    return '<div class="statline"><span><b>'+esc(customer?.name||'Cliente não identificada')+'</b><br><small>'+esc(customer?.phone||'')+' • '+method+' • '+date+'</small><br><small>'+(items.length?items.length+' peça(s) na sacolinha':'Solicitação recebida, mas a sacolinha está sem peças reservadas.')+'</small></span><span><span class="pill">Aguardando confirmação</span><br><button class="secondary" style="margin-top:8px" onclick="openCloseRequest(\''+req.bag_id+'\')">Abrir solicitação</button></span></div>';
   }).join('')||'<div class="empty">Nenhuma solicitação pendente.</div>';
 }
 function label(productId){
