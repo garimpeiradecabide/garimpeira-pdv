@@ -390,9 +390,10 @@ async function registerSupplierPayment(supplierId){
   const paid=db.supplierPayments.filter(row=>row.supplier_id===supplierId).reduce((sum,row)=>sum+Number(row.amount||0),0);
   const remaining=Math.max(0,due-paid);if(remaining<=0)return alert('Não há saldo pendente para esta fornecedora.');
   const raw=prompt('Quanto você pagou para '+supplier.name+'? Saldo pendente: '+money(remaining),remaining.toFixed(2).replace('.',','));if(raw===null)return;
-  const amount=Number(String(raw).trim().replace(/\./g,'').replace(',','.'));
+  const amountText=String(raw).trim();const amount=amountText.includes(',')?Number(amountText.replace(/\./g,'').replace(',','.')):Number(amountText);
   if(!Number.isFinite(amount)||amount<=0||amount>remaining+0.001)return alert('Informe um valor válido, até '+money(remaining)+'.');
-  const date=prompt('Data do pagamento (AAAA-MM-DD):',new Date().toLocaleDateString('en-CA'));if(date===null)return;
+  const today=new Date(),todayIso=today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(today.getDate()).padStart(2,'0');
+  const date=prompt('Data do pagamento (AAAA-MM-DD):',todayIso);if(date===null)return;
   if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||Number.isNaN(new Date(date+'T12:00:00').getTime()))return alert('Informe a data no formato AAAA-MM-DD.');
   const description=prompt('Observação do pagamento (opcional):','')||null;
   const {error}=await sb.rpc('admin_register_supplier_payment',{p_supplier_id:supplierId,p_amount:amount,p_paid_at:new Date(date+'T12:00:00').toISOString(),p_description:description});
@@ -424,8 +425,9 @@ function renderResults(){
   const monthField=el('reportMonthField'),weekField=el('reportWeekField'),liveField=el('reportLiveField');
   if(!monthField)return;
   monthField.style.display=mode==='month'?'block':'none';weekField.style.display=mode==='week'?'block':'none';liveField.style.display=mode==='live'?'block':'none';
-  if(!el('reportMonth').value)el('reportMonth').value=new Date().toLocaleDateString('en-CA').slice(0,7);
-  if(!el('reportWeekDate').value)el('reportWeekDate').value=new Date().toLocaleDateString('en-CA');
+  const today=new Date(),todayIso=today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(today.getDate()).padStart(2,'0');
+  if(!el('reportMonth').value)el('reportMonth').value=todayIso.slice(0,7);
+  if(!el('reportWeekDate').value)el('reportWeekDate').value=todayIso;
   const liveSelect=el('reportLiveSession'),selectedLive=liveSelect.value;
   liveSelect.innerHTML='<option value="">Selecione uma live</option>'+db.liveSessions.map(row=>'<option value="'+row.id+'">'+esc(row.title)+' • '+new Date(row.started_at).toLocaleDateString('pt-BR')+' • '+esc(row.platform||'')+'</option>').join('');
   if(db.liveSessions.some(row=>row.id===selectedLive))liveSelect.value=selectedLive;
