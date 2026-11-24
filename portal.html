@@ -93,6 +93,14 @@ async function startPortal(){
   if(portalRefreshTimer)clearInterval(portalRefreshTimer);
   portalRefreshTimer=setInterval(()=>loadCustomerData(customer),7000);
 }
+function notifyGarimpeira(kind){
+  if(!activeCustomer)return;
+  const label=kind==='moto'?'moto entrega':'simulação de frete';
+  const message='Olá, Garimpeira! 🤍 A cliente '+activeCustomer.name+' solicitou '+label+'. O pedido já foi registrado no Garimpeira PDV.';
+  const url='https://wa.me/5511916120633?text='+encodeURIComponent(message);
+  window.location.href=url;
+}
+window.notifyGarimpeira=notifyGarimpeira;
 async function requestDelivery(kind){
   if(!activeCustomer||!deliveryBagId)return;
   const label=kind==='moto'?'moto entrega':'simulação de frete';
@@ -165,7 +173,7 @@ async function loadCustomerData(customer){
   const existingRequest=deliveryBagId&&deliveries.some(d=>d.bag_id===deliveryBagId);
   $('deliveryActions').innerHTML=deliveryBagId&&!existingRequest
     ? '<p class="muted">Escolha como deseja receber sua compra:</p><div class="row"><button type="button" onclick="requestDelivery(\'moto\')">Solicitar moto entrega (Bragança Paulista)</button><button type="button" class="secondary" onclick="requestDelivery(\'shipping\')">Solicitar simulação de frete (outras cidades)</button></div>'
-    : deliveryBagId&&existingRequest?'<p class="muted">Sua solicitação desta compra já foi registrada. A Garimpeira entrará em contato pelo WhatsApp.</p>':'<p class="muted">As opções de entrega ficam disponíveis após a finalização da compra.</p>';
+    : deliveryBagId&&existingRequest?'<p class="muted">Sua solicitação desta compra já foi registrada. Para avisar a Garimpeira, toque abaixo e escolha o WhatsApp Business, se o celular perguntar qual aplicativo usar.</p><button type="button" onclick="notifyGarimpeira(\''+(deliveries.find(d=>d.bag_id===deliveryBagId)?.status==='requested_shipping'?'shipping':'moto')+'\')">Avisar a Garimpeira pelo WhatsApp</button>':'<p class="muted">As opções de entrega ficam disponíveis após a finalização da compra.</p>';
   $('deliveries').innerHTML=deliveries.length?deliveries.map(d=>'<div class="line"><span><b>'+esc(deliveryLabels[d.status]||d.status)+'</b><br><small class="muted">'+esc(d.address||'A combinar pelo WhatsApp')+(d.tracking_code?' • Rastreio: '+esc(d.tracking_code):'')+'</small></span>'+(Number(d.shipping_cost||0)>0?'<b>'+money(d.shipping_cost)+'</b>':'')+'</div>').join(''):'<div class="empty">Nenhuma solicitação cadastrada.</div>';
 }
 (async()=>{const {data:{session}}=await sb.auth.getSession();if(session)await startPortal()})();
