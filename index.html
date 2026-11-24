@@ -109,7 +109,7 @@ table{width:100%;border-collapse:collapse;margin-top:12px;background:white}th,td
   <section id="stock" class="panel"><div class="card"><h3>Estoque e movimentações</h3><div id="stockList"></div></div></section>
   <section id="live" class="panel"><div class="card">
     <h3>Frente de caixa • venda ao vivo</h3><div class="formgrid">
-      <div class="field"><label for="liveClient">Cliente selecionada</label><select id="liveClient" onchange="renderCart()"></select></div>
+      <div class="field"><label for="liveClientSearch">Buscar cliente pelo nome</label><input id="liveClientSearch" placeholder="Digite o nome: Ana, Maria, Mara..." oninput="filterLiveClients()"><label for="liveClient">Cliente selecionada</label><select id="liveClient" onchange="renderCart()"></select></div>
       <div class="field"><label for="scan">Código de barras da peça</label><input id="scan" inputmode="numeric" placeholder="Leia com a câmera ou digite o código" onkeydown="if(event.key==='Enter'){event.preventDefault();scanProduct()}"><button type="button" class="secondary" style="margin-top:6px;width:100%" onclick="openCameraScan('live')">📷 Bipar com a câmera do celular</button></div>
       <div class="field"><label for="shortScan">Ou código curto da live</label><input id="shortScan" placeholder="Ex.: 025" onkeydown="if(event.key==='Enter'){event.preventDefault();scanShort()}"></div>
       <div class="field"><label for="liveSearch">Pesquisar peça pelo nome, tamanho, código de live ou barras</label><input id="liveSearch" placeholder="Digite parte da descrição ou um código..." oninput="searchLiveProducts()"></div>
@@ -348,12 +348,19 @@ function renderProducts(){
 function renderStock(){
   el('stockList').innerHTML=db.products.map(p=>`<div class="statline"><span>${esc(p.desc)} <small>(${esc(p.short)})</small></span><span class="pill">${esc(p.status)}</span></div>`).join('')||'<div class="empty">Estoque vazio.</div>';
 }
+function filterLiveClients(){
+  const query=(el('liveClientSearch')?.value||'').trim().toLocaleLowerCase('pt-BR');
+  const selected=el('liveClient').value;
+  const matches=db.clients.filter(c=>!query||String(c.name||'').toLocaleLowerCase('pt-BR').includes(query));
+  el('liveClient').innerHTML='<option value="">Selecione uma cliente ('+matches.length+')</option>'+matches.map(c=>`<option value="${c.id}">${esc(c.name)} — ${esc(c.phone)}</option>`).join('');
+  if(matches.some(c=>c.id===selected))el('liveClient').value=selected;
+  else if(selected)renderCart();
+}
 function renderSelectors(){
-  const ss=el('pSupplier').value,cc=el('liveClient').value;
+  const ss=el('pSupplier').value;
   el('pSupplier').innerHTML='<option value="">Sem fornecedora</option>'+db.suppliers.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
   if(db.suppliers.some(s=>s.id===ss))el('pSupplier').value=ss;
-  el('liveClient').innerHTML='<option value="">Selecione uma cliente</option>'+db.clients.map(c=>`<option value="${c.id}">${esc(c.name)} — ${esc(c.phone)}</option>`).join('');
-  if(db.clients.some(c=>c.id===cc))el('liveClient').value=cc;
+  filterLiveClients();
 }
 function renderCart(){
   const cid=el('liveClient').value;if(!cid){el('cart').innerHTML='<div class="empty">Selecione uma cliente para visualizar a sacolinha.</div>';return;}
