@@ -262,6 +262,7 @@ async function addProduct(){
   if(db.products.some(p=>p.barcode===barcode))return alert('Este código de barras já está cadastrado em outra peça. Cada etiqueta precisa ter um código exclusivo.');
   const short=el('pShort').value.trim()||String(Date.now()).slice(-3);
   const supplierId=el('pSupplier').value||null;
+  if(el('pType').value==='consignment'&&!supplierId)return alert('Selecione a fornecedora da peça consignada para o sistema calcular o repasse corretamente.');
   const payload={description:desc,short_code:short,size:el('pSize').value.trim()||null,cost,sale_price:price,supplier_id:supplierId,acquisition_type:el('pType').value,barcode,status:'available'};
   const {error}=await sb.from('products').insert(payload);
   if(error)return reportError(error,'Não foi possível salvar o produto.');
@@ -456,8 +457,7 @@ function renderResults(){
     if(mode==='live')received+=bagGross>0?paidValue*(chosenGross/bagGross):0;
   }
   if(mode!=='live'&&start&&end){
-    const closedIds=new Set(selectedSales.map(sale=>sale.id));
-    received=db.payments.filter(payment=>closedIds.has(payment.bag_id)&&payment.status==='paid'&&!payment.superseded_at&&payment.paid_at&&new Date(payment.paid_at)>=start&&new Date(payment.paid_at)<end).reduce((sum,payment)=>sum+Number(payment.base_amount??payment.amount??0),0);
+    received=db.payments.filter(payment=>payment.status==='paid'&&!payment.superseded_at&&payment.paid_at&&new Date(payment.paid_at)>=start&&new Date(payment.paid_at)<end).reduce((sum,payment)=>sum+Number(payment.base_amount??payment.amount??0),0);
   }
   const profit=revenue-cost;
   const cards=[['Vendas líquidas',revenue],['Custo / repasse',cost],['Lucro bruto',profit],['Recebido',received]];
