@@ -389,7 +389,9 @@ function renderCart(){
   const paymentHistory=`<div class="note"><b>Resumo financeiro</b><br>Total confirmado: <b>${money(paidTotal)}</b><br>Valor aguardando pagamento: <b>${money(pendingTotal)}</b></div><div class="card" style="padding:12px;margin:10px 0"><b>Histórico de pagamentos</b>${paymentRows}</div>`;
   let firstPanel='';
   const customer=db.clients.find(c=>c.id===cid);
-  const isTestCustomer=(customer?.name||'').trim().toLowerCase()==='jilo maria';
+  const testCustomerName=(customer?.name||'').trim().toLowerCase();
+  const isTestCustomer=testCustomerName==='jilo maria'||testCustomerName==='teste retirada link - não pagar';
+  const isLinkRemovalTest=testCustomerName==='teste retirada link - não pagar';
   if(isTestCustomer){
     if(items.length===1&&(!first||first.status==='failed')){
       firstPanel=`<div class="note"><b>Ambiente de TESTE — Mercado Pago.</b><br>Esta sacolinha é exclusiva para testes. Nenhuma cobrança real será enviada.<div class="formgrid"><div class="field"><label for="testFirstPayMethod">Forma de pagamento</label><select id="testFirstPayMethod"><option value="pix">Pix</option><option value="card">Cartão de crédito</option></select></div></div><button onclick="createTestFirstItemCheckout('${cid}')">Gerar checkout de TESTE</button></div>`;
@@ -397,6 +399,11 @@ function renderCart(){
       firstPanel=`<div class="note"><b>Cobrança de TESTE aguardando pagamento.</b><br>Total: ${money(first.amount)}<br><button class="secondary" onclick="openTestCheckout('${cid}')">Abrir checkout de TESTE novamente</button></div>`;
     }else if(first?.environment==='test'&&first.status==='paid'){
       firstPanel=`<div class="note"><b>Pagamento de TESTE aprovado.</b><br>Crédito de teste: ${money(first.base_amount)}<br>As próximas peças estão liberadas nesta sacolinha de teste.</div>`;
+      if(isLinkRemovalTest&&balance>0&&balancePayment?.status==='pending'){
+        firstPanel+=`<div class="note"><b>Cobrança de saldo de TESTE criada — NÃO PAGAR.</b><br>Link de teste ativo para ${money(balancePayment.amount)}. Remova a peça de teste para validar a invalidação do link antigo.</div>`;
+      }else if(isLinkRemovalTest&&balance>0){
+        firstPanel+=`<div class="note"><b>Saldo de teste: ${money(balance)}</b><br>Gere uma cobrança de sandbox para testar a retirada e o recálculo. Nenhum pagamento real será solicitado.<br><button onclick="createTestBagBalanceCheckout('${cid}')">Gerar cobrança de saldo de TESTE (não pagar)</button></div>`;
+      }
     }else{
       firstPanel='<div class="note"><b>Sacolinha reservada para testes.</b><br>Não gere cobranças de produção para esta cliente.</div>';
     }
@@ -456,6 +463,16 @@ async function createTestFirstItemCheckout(customerId){
   const url=fresh?.environment==='test'&&fresh?.checkout_url?fresh.checkout_url:data.init_point;
   if(checkoutWindow)checkoutWindow.location.href=url;
   else window.open(url,'_blank','noopener');
+}
+async function createTestBagBalanceCheckout(customerId){
+  const meta=db.bagMeta[customerId],customer=db.clients.find(c=>c.id===customerId);
+  if(!meta?.id||!customer)return alert('Não encontrei a sacolinha de teste.');
+  if((customer.name||'').trim().toLowerCase()!=='teste retirada link - não pagar')return alert('Esta função é exclusiva da sacolinha de teste de retirada.');
+  if(meta.balancePayment?.status==='pending')return alert('Já existe uma cobrança de teste pendente. Não gere outra.');
+  const {data,error}=await sb.functions.invoke('admin-create-test-bag-balance-checkout',{body:{bag_id:meta.id}});
+  if(error||data?.error||!data?.preference_id)return alert(data?.error||error?.message||'Não foi possível gerar a cobrança de teste.');
+  await loadCloud();
+  alert('Cobrança de TESTE criada no Mercado Pago. Valor: '+money(data.amount)+'.\\n\\nNão pague este link. Agora podemos testar a retirada de uma peça e a invalidação da cobrança antiga.');
 }
 async function createFirstItemCheckout(customerId){
   const meta=db.bagMeta[customerId],customer=db.clients.find(c=>c.id===customerId),method=el('firstPayMethod')?.value;
