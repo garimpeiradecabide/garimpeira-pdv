@@ -630,11 +630,34 @@ function renderCart(){
   }else if(first?.status==='failed'||first?.status==='cancelled'){
     firstPanel=`<div class="note">A cobrança anterior não foi concluída. Gere um novo link ou autorize pagamento combinado.</div><div class="formgrid"><div class="field"><label for="firstPayMethod">Forma de pagamento</label><select id="firstPayMethod"><option value="pix">Pix</option><option value="card">Cartão de crédito</option></select></div></div><button onclick="createFirstItemCheckout('${cid}')">Gerar novo link da primeira peça</button> <button class="secondary" onclick="setFirstPaymentCombined('${cid}')">Autorizar pagamento combinado</button>`;
   }
+  const pixSettings=db.paymentSettings||{};
+  if(items.length){
+    firstPanel+=`<div class="note"><b>Comanda da live</b><br>Envie a relação das peças e o valor para a cliente pagar diretamente pelo Pix. Enviar a comanda não registra recebimento nem finaliza a sacolinha.<br><button class="secondary" onclick="sendLiveBagInvoice('${cid}')">Enviar comanda da live pelo WhatsApp</button></div>`;
+  }
   el('cart').innerHTML=(rows||'<div class="empty">Esta sacolinha está vazia.</div>')+
     `<div class="statline"><span>Subtotal</span><b>${money(subtotal)}</b></div><div class="statline"><span>Desconto administrativo</span><b>${money(discount)}</b></div><div class="statline"><b>Total das peças</b><b>${money(total)}</b></div>`+
     paymentHistory+
     firstPanel+
     (meta?`<div class="row" style="margin-top:12px"><button class="secondary" onclick="setBagDiscount('${cid}')">Conceder / alterar desconto</button><button onclick="closeBag('${cid}')" ${items.length&&(total===0||(first?.status==='paid'&&balance===0))?'':'disabled'}>Finalizar sacolinha quitada</button></div>`:'');
+}
+function sendLiveBagInvoice(customerId){
+  const customer=db.clients.find(row=>row.id===customerId);
+  const items=db.bags[customerId]||[];
+  const meta=db.bagMeta[customerId];
+  if(!customer?.phone)return alert('Cadastre o telefone/WhatsApp da cliente antes de enviar a comanda.');
+  if(!items.length||!meta?.id)return alert('Esta sacolinha não possui peças para cobrar.');
+  const subtotal=items.reduce((sum,item)=>sum+Number(item.price||0),0);
+  const discount=Number(meta.discount||0);
+  const total=Math.max(0,subtotal-discount);
+  const lines=items.map((item,index)=>(index+1)+'. '+item.description+(item.size?' — '+item.size:'')+' — '+money(item.price));
+  const settings=db.paymentSettings||{};
+  const pixKey=settings.pix_key||el('pixKey')?.value||'';
+  const keyType=settings.pix_key_type||el('pixKeyType')?.value||'';
+  const provider=settings.pix_provider||el('pixProvider')?.value||'';
+  const receiver=settings.pix_receiver||el('pixReceiver')?.value||'';
+  if(!pixKey)return alert('Cadastre sua chave Pix na aba Pagamentos antes de enviar a comanda.');
+  const message='Olá, '+customer.name+'! 🤍 Segue a comanda da sua live na Garimpeira de Cabide:\n\n'+lines.join('\n')+'\n\nSubtotal: '+money(subtotal)+(discount>0?'\nDesconto: -'+money(discount):'')+'\n*TOTAL A PAGAR: '+money(total)+'*\n\n*Dados para pagamento via Pix*\nChave ('+keyType+'): '+pixKey+(provider?'\nInstituição: '+provider:'')+(receiver?'\nTitular: '+receiver:'')+'\n\nDepois de realizar o Pix, por favor, envie o comprovante por aqui. Assim que confirmarmos o recebimento, atualizaremos sua sacolinha e você poderá solicitar a entrega. 💚';
+  window.open('https://wa.me/'+normalizeWhatsapp(customer.phone)+'?text='+encodeURIComponent(message),'_blank');
 }
 function normalizeWhatsapp(phone){
   let digits=String(phone||'').replace(/\D/g,'');
