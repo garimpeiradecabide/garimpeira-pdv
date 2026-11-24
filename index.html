@@ -343,13 +343,14 @@ async function editSupplier(id){
 }
 async function deleteSupplier(id){
   const s=db.suppliers.find(x=>x.id===id);if(!s)return;
-  const [p,pay,l]=await Promise.all([
+  const [p,pay,l,items]=await Promise.all([
     sb.from('products').select('id',{count:'exact',head:true}).eq('supplier_id',id),
     sb.from('supplier_payments').select('id',{count:'exact',head:true}).eq('supplier_id',id),
-    sb.from('supplier_lots').select('id',{count:'exact',head:true}).eq('supplier_id',id)
+    sb.from('supplier_lots').select('id',{count:'exact',head:true}).eq('supplier_id',id),
+    sb.from('bag_items').select('id',{count:'exact',head:true}).eq('supplier_id_snapshot',id)
   ]);
-  if(p.error||pay.error||l.error)return reportError(p.error||pay.error||l.error,'Não foi possível verificar o histórico.');
-  if((p.count||0)+(pay.count||0)+(l.count||0)>0){
+  if(p.error||pay.error||l.error||items.error)return reportError(p.error||pay.error||l.error||items.error,'Não foi possível verificar o histórico.');
+  if((p.count||0)+(pay.count||0)+(l.count||0)+(items.count||0)>0){
     if(!confirm('Esta fornecedora tem peças, lotes ou pagamentos registrados. Ela será INATIVADA para preservar o histórico. Continuar?'))return;
     const {error}=await sb.from('suppliers').update({active:false}).eq('id',id);
     if(error)return reportError(error,'Não foi possível inativar a fornecedora.');
