@@ -89,7 +89,11 @@ table{width:100%;border-collapse:collapse;margin-top:12px;background:white}th,td
       <div class="field"><label for="cName">Nome</label><input id="cName" placeholder="Nome da cliente"></div>
       <div class="field"><label for="cPhone">Telefone / WhatsApp</label><input id="cPhone" placeholder="DDD + número"></div>
       <div class="field"><label for="cObs">Observações</label><input id="cObs" placeholder="Opcional"></div>
-    </div><button onclick="addClient()">Salvar cliente</button><input style="margin-top:14px" id="clientSearch" placeholder="Buscar por nome ou telefone..." oninput="renderClients()"><div id="clientList"></div>
+    </div><button onclick="addClient()">Salvar cliente</button>
+    <div class="note" style="margin-top:16px"><b>Importar contatos do Google</b><br>Exporte seus contatos do Google Contatos em CSV e selecione o arquivo aqui. O sistema importa nome e telefone e ignora números já cadastrados.</div>
+    <input id="googleContactsCsv" type="file" accept=".csv,text/csv" style="display:none" onchange="importGoogleContacts(this)">
+    <button class="secondary" type="button" style="margin-top:8px" onclick="el('googleContactsCsv').click()">Importar contatos do Google (CSV)</button>
+    <input style="margin-top:14px" id="clientSearch" placeholder="Buscar por nome ou telefone..." oninput="renderClients()"><div id="clientList"></div>
   </div></section>
   <section id="suppliers" class="panel"><div class="card">
     <h3>Cadastro de fornecedoras</h3><div class="formgrid">
@@ -248,6 +252,59 @@ async function addClient(){
   el('cName').value='';el('cPhone').value='';el('cObs').value='';
   await loadCloud();alert('Cliente salva no Supabase.');
 }
+
+function parseContactsCsv(text){
+  const rows=[];let row=[],field='',quoted=false;
+  for(let i=0;i<text.length;i++){
+    const ch=text[i],next=text[i+1];
+    if(ch==='"'&&quoted&&next==='"'){field+='"';i++;}
+    else if(ch==='"'){quoted=!quoted;}
+    else if(ch===','&&!quoted){row.push(field);field='';}
+    else if((ch==='\n'||ch==='\r')&&!quoted){if(ch==='\r'&&next==='\n')i++;row.push(field);if(row.some(v=>v.trim()))rows.push(row);row=[];field='';}
+    else field+=ch;
+  }
+  row.push(field);if(row.some(v=>v.trim()))rows.push(row);
+  if(!rows.length)return [];
+  const norm=s=>String(s||'').replace(/^\uFEFF/,'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLowerCase();
+  const headers=rows[0].map(norm);
+  const findIndex=tests=>headers.findIndex(h=>tests.some(t=>h===t||h.startsWith(t)));
+  const nameIdx=findIndex(['name','nome','display name']);
+  const givenIdx=findIndex(['given name','first name','nome proprio']);
+  const familyIdx=findIndex(['family name','last name','sobrenome']);
+  const phoneIdxs=headers.map((h,i)=>({h,i})).filter(x=>/^(phone|telefone|celular|mobile)/.test(x.h)&&(/value$/.test(x.h)||x.h==='telefone'||x.h==='celular'||x.h==='mobile')).map(x=>x.i);
+  const output=[];
+  for(const r of rows.slice(1)){
+    let name=(nameIdx>=0?r[nameIdx]:'').trim();
+    if(!name)name=[givenIdx>=0?r[givenIdx]:'',familyIdx>=0?r[familyIdx]:''].filter(Boolean).join(' ').trim();
+    const phone=phoneIdxs.map(i=>(r[i]||'').trim()).find(Boolean)||'';
+    const digits=phone.replace(/\D/g,'');
+    if(name&&digits.length>=8)output.push({name,phone:phone.trim()});
+  }
+  return output;
+}
+async function importGoogleContacts(input){
+  const file=input.files?.[0];if(!file)return;
+  try{
+    const csv=await file.text();const rows=parseContactsCsv(csv);
+    if(!rows.length){alert('Não encontrei contatos com nome e telefone nesse CSV. Confira se exportou os Contatos do Google no formato CSV.');return;}
+    const existing=new Set(db.clients.map(c=>(c.phone||'').replace(/\D/g,'')));
+    const seen=new Set();const fresh=[];
+    for(const c of rows){const key=c.phone.replace(/\D/g,'');if(existing.has(key)||seen.has(key))continue;seen.add(key);fresh.push(c);}
+    if(!fresh.length){alert('Nenhum contato novo para importar. Os telefones desse arquivo já estão cadastrados.');return;}
+    if(!confirm('Importar '+fresh.length+' contatos novos? Contatos sem telefone e números já cadastrados serão ignorados.'))return;
+    let imported=0;
+    for(let i=0;i<fresh.length;i+=50){
+      const batch=fresh.slice(i,i+50).map(c=>({name:c.name,phone:c.phone,notes:'Importado do Google Contatos'}));
+      const {error}=await sb.from('customers').insert(batch);
+      if(error)throw error;
+      imported+=batch.length;
+    }
+    await loadCloud();
+    alert('Importação concluída! '+imported+' contatos adicionados. '+(rows.length-imported)+' contatos ignorados por duplicidade ou dados incompletos.');
+  }catch(err){reportError(err,'Não foi possível importar o arquivo CSV.');}
+  finally{input.value='';}
+}
+
 async function addSupplier(){
   const name=el('sName').value.trim();if(!name)return alert('Informe o nome.');
   const {error}=await sb.from('suppliers').insert({name,phone:el('sPhone').value.trim()||null,settlement_rule:el('sRule').value,active:true});
