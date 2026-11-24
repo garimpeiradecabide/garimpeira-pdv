@@ -116,6 +116,8 @@ async function requestDelivery(kind){
   }
   await loadCustomerData(activeCustomer);
 }
+// Disponibiliza a ação para os botões criados dinamicamente no portal.
+window.requestDelivery=requestDelivery;
 async function loadCustomerData(customer){
   const bags=await sb.from('bags').select('*').eq('customer_id',customer.id).order('created_at',{ascending:false});
   if(bags.error){$('currentBag').textContent=bags.error.message;return}
