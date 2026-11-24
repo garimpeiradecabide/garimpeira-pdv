@@ -53,7 +53,7 @@ if(!window.supabase||typeof window.supabase.createClient!=='function'){
 const URL='https://gcyuvbakxswkjcyqscth.supabase.co';
 const KEY='sb_publishable_haoKT8vSzAEpxwfsapBM1A_4REUsg8T';
 const sb=window.supabase.createClient(URL,KEY);
-let paymentSettings=null,currentBagTotal=0,portalRefreshTimer=null;
+let portalRefreshTimer=null;
 const money=n=>Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function msg(t){$('message').textContent=t}
@@ -84,55 +84,25 @@ async function startPortal(){
   const own=await sb.from('customers').select('*').eq('auth_user_id',user.id).maybeSingle();
   if(own.error){msg(own.error.message);return}
   customer=own.data;
-  const ps=await sb.from('payment_settings').select('*').eq('singleton',true).maybeSingle();
-  if(!ps.error)paymentSettings=ps.data;
   if(!customer){await sb.auth.signOut();msg('Este acesso ainda não está vinculado a um cadastro de cliente. Fale com a Garimpeira.');return}
   $('auth').classList.add('hidden');$('portal').classList.remove('hidden');$('welcome').textContent='Olá, '+customer.name+'!';
   await loadCustomerData(customer);
   if(portalRefreshTimer)clearInterval(portalRefreshTimer);
   portalRefreshTimer=setInterval(()=>loadCustomerData(customer),7000);
 }
-function togglePixInstructions(){
-  const box=$('pixInstructions'),method=$('paymentPreference')?.value;if(!box)return;
-  if(method!=='pix'&&method!=='mixed'){box.innerHTML='';return;}
-  if(!paymentSettings?.pix_key){box.innerHTML='<p class="muted">A chave Pix ainda não foi configurada pela Garimpeira. Fale conosco pelo WhatsApp.</p>';return;}
-  box.innerHTML='<div class="note"><b>Pagamento por Pix</b><br>Chave ('+esc(paymentSettings.pix_key_type)+'): <b>'+esc(paymentSettings.pix_key)+'</b><br>Recebedor: '+esc(paymentSettings.pix_receiver||'confira o nome exibido no seu banco')+'<br>Instituição: '+esc(paymentSettings.pix_provider)+'<br>Valor da sacolinha: <b>'+money(currentBagTotal)+'</b><br><small>Copie a chave, abra o aplicativo do seu banco, cole a chave e confira o valor e o nome do recebedor antes de pagar. A confirmação será feita pela Garimpeira após conferir o recebimento.</small><br><button type="button" onclick="copyPixKey()">Copiar chave Pix</button></div>';
-}
-async function copyPixKey(){if(!paymentSettings?.pix_key)return;try{await navigator.clipboard.writeText(paymentSettings.pix_key);alert('Chave Pix copiada.');}catch(e){prompt('Copie a chave Pix:',paymentSettings.pix_key);}}
-function portalMsg(t){const n=$('bagActionMessage');if(n)n.textContent=t;}
-async function requestClose(bagId){
- portalMsg('A cobrança será enviada pela Garimpeira no WhatsApp.');return;
- const method=$('paymentPreference').value;
- if(method==='card'){
-  if(!confirm('Você será direcionada ao ambiente seguro do Mercado Pago para pagar com cartão. Continuar?'))return;
-  portalMsg('Preparando pagamento...');
-  const {data,error}=await sb.functions.invoke('create-mp-checkout',{body:{bag_id:bagId}});
-  if(error||!data?.init_point){portalMsg(data?.error||error?.message||'Não foi possível iniciar o pagamento.');return;}
-  window.location.href=data.init_point;return;
- }
- if(method==='mixed'&&!confirm('O pagamento misto será combinado com a administração. A solicitação será enviada para conferência e instruções. Continuar?'))return;
- if(method==='pix'&&!confirm('Após enviar, faça o Pix pela chave exibida e aguarde a conferência manual da Garimpeira. Enviar solicitação?'))return;
- const {error}=await sb.rpc('customer_request_bag_close',{p_bag_id:bagId,p_payment_method:method});
- if(error){portalMsg('Não foi possível solicitar o fechamento: '+error.message);return}portalMsg('Solicitação enviada à Garimpeira.');await startPortal();
-}
-// Ações usadas no HTML dinâmico da sacolinha.
-window.togglePixInstructions=togglePixInstructions;
-window.copyPixKey=copyPixKey;
-
 async function loadCustomerData(customer){
   const bags=await sb.from('bags').select('*').eq('customer_id',customer.id).order('created_at',{ascending:false});
   if(bags.error){$('currentBag').textContent=bags.error.message;return}
   const ids=bags.data.map(b=>b.id);
-  let items=[],payments=[],deliveries=[],requests=[];
+  let items=[],payments=[],deliveries=[];
   if(ids.length){
     const [i,p,d,cr]=await Promise.all([
       sb.from('bag_items').select('*').in('bag_id',ids).order('added_at',{ascending:true}),
       sb.from('payments').select('*').in('bag_id',ids).order('created_at',{ascending:false}),
-      sb.from('deliveries').select('*').in('bag_id',ids).order('created_at',{ascending:false}),
-      sb.from('bag_close_requests').select('*').in('bag_id',ids).order('requested_at',{ascending:false})
+      sb.from('deliveries').select('*').in('bag_id',ids).order('created_at',{ascending:false})
     ]);
-    if(i.error||p.error||d.error||cr.error){$('currentBag').textContent=(i.error||p.error||d.error||cr.error).message;return}
-    items=i.data;payments=p.data;deliveries=d.data;requests=cr.data;
+    if(i.error||p.error||d.error){$('currentBag').textContent=(i.error||p.error||d.error).message;return}
+    items=i.data;payments=p.data;deliveries=d.data;
   }
   const open=bags.data.filter(b=>b.status==='open');
   const openItems=items.filter(i=>open.some(b=>b.id===i.bag_id)&&i.status==='reserved');
