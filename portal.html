@@ -95,19 +95,25 @@ async function startPortal(){
 }
 async function requestDelivery(kind){
   if(!activeCustomer||!deliveryBagId)return;
-  const tab=window.open('about:blank','_blank');
+  const label=kind==='moto'?'moto entrega':'simulação de frete';
+  const message='Olá, Garimpeira! 🤍 A cliente '+activeCustomer.name+' solicitou '+label+'. O pedido já foi registrado no Garimpeira PDV.';
+  const url='https://wa.me/5511916120633?text='+encodeURIComponent(message);
+  // Abre o destino diretamente durante o toque, antes da operação assíncrona,
+  // para evitar que o navegador do celular bloqueie o redirecionamento.
+  const tab=window.open(url,'_blank');
   const requestType=kind==='moto'?'requested_moto':'requested_shipping';
-  const {data,error}=await sb.from('deliveries').insert({
+  const {error}=await sb.from('deliveries').insert({
     bag_id:deliveryBagId,
     shipping_cost:0,
     status:requestType,
     notes:kind==='moto'?'Solicitação de moto entrega pelo portal':'Solicitação de simulação de frete pelo portal'
   }).select().single();
-  if(error){if(tab)tab.close();alert('Não foi possível registrar sua solicitação: '+error.message);return}
-  const label=kind==='moto'?'moto entrega':'simulação de frete';
-  const message='Olá, Garimpeira! 🤍 A cliente '+activeCustomer.name+' solicitou '+label+'. O pedido já foi registrado no Garimpeira PDV.';
-  const url='https://wa.me/5511916120633?text='+encodeURIComponent(message);
-  if(tab)tab.location.href=url;else window.location.href=url;
+  if(error){
+    if(tab)tab.close();
+    alert('Não foi possível registrar sua solicitação: '+error.message);
+    await loadCustomerData(activeCustomer);
+    return;
+  }
   await loadCustomerData(activeCustomer);
 }
 async function loadCustomerData(customer){
@@ -154,7 +160,7 @@ async function loadCustomerData(customer){
   const deliveryLabels={requested_moto:'Solicitação de moto entrega enviada',requested_shipping:'Solicitação de simulação de frete enviada',accepted:'Solicitação aceita • aguarde nosso contato',preparing:'Em preparação',shipped:'Enviado / em rota',delivered:'Entregue',pending:'Aguardando'};
   const existingRequest=deliveryBagId&&deliveries.some(d=>d.bag_id===deliveryBagId);
   $('deliveryActions').innerHTML=deliveryBagId&&!existingRequest
-    ? '<p class="muted">Escolha como deseja receber sua compra:</p><div class="row"><button type="button" onclick="requestDelivery(\'moto\')">Solicitar moto entrega</button><button type="button" class="secondary" onclick="requestDelivery(\'shipping\')">Solicitar simulação de frete</button></div>'
+    ? '<p class="muted">Escolha como deseja receber sua compra:</p><div class="row"><button type="button" onclick="requestDelivery(\'moto\')">Solicitar moto entrega (Bragança Paulista)</button><button type="button" class="secondary" onclick="requestDelivery(\'shipping\')">Solicitar simulação de frete (outras cidades)</button></div>'
     : deliveryBagId&&existingRequest?'<p class="muted">Sua solicitação desta compra já foi registrada. A Garimpeira entrará em contato pelo WhatsApp.</p>':'<p class="muted">As opções de entrega ficam disponíveis após a finalização da compra.</p>';
   $('deliveries').innerHTML=deliveries.length?deliveries.map(d=>'<div class="line"><span><b>'+esc(deliveryLabels[d.status]||d.status)+'</b><br><small class="muted">'+esc(d.address||'A combinar pelo WhatsApp')+(d.tracking_code?' • Rastreio: '+esc(d.tracking_code):'')+'</small></span>'+(Number(d.shipping_cost||0)>0?'<b>'+money(d.shipping_cost)+'</b>':'')+'</div>').join(''):'<div class="empty">Nenhuma solicitação cadastrada.</div>';
 }
