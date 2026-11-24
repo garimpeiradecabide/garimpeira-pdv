@@ -623,16 +623,12 @@ function renderCart(){
     }else if(balance>0&&balancePayment?.status==='pending'){
       firstPanel+=`<div class="note"><b>Cobrança Pix do saldo enviada, aguardando aprovação.</b><br>Valor do Pix: ${money(balancePayment.amount)}<br>Vencimento: ${balancePayment.due_at?new Date(balancePayment.due_at).toLocaleString('pt-BR'):'15h do próximo dia'}<br><button class="secondary" onclick="sendBagBalanceWhatsApp('${cid}')">Abrir WhatsApp com a cobrança novamente</button></div>`;
     }else if(balance>0){
-      firstPanel+=`<div class="note"><b>Saldo restante das peças: ${money(balance)}</b>${Number(meta?.balancePaid||0)>0?'<br>Pagamentos adicionais já conferidos: '+money(meta.balancePaid):''}<br>Envie a cobrança diretamente pelo WhatsApp. Depois de conferir o recebimento, registre abaixo.<br><button onclick="registerExternalBagPayment('${cid}')">Pagamento concluído externamente e finalizar</button></div>`;
+      firstPanel+=`<div class="note"><b>Saldo restante das peças: ${money(balance)}</b>${Number(meta?.balancePaid||0)>0?'<br>Pagamentos adicionais já conferidos: '+money(meta.balancePaid):''}<br>Envie a cobrança diretamente pelo WhatsApp. Depois de conferir o recebimento, registre abaixo.<br><button onclick="registerExternalBagPayment('${cid}')">Pagamento concluído externamente e finalizar</button> <button class="secondary" onclick="sendLiveBagInvoice('${cid}')">Enviar comanda da live</button></div>`;
     }else{
       firstPanel+=`<div class="note">A sacolinha já está totalmente quitada. Todos os pagamentos foram conferidos.</div>`;
     }
   }else if(first?.status==='failed'||first?.status==='cancelled'){
     firstPanel=`<div class="note">A cobrança anterior não foi concluída. Gere um novo link ou autorize pagamento combinado.</div><div class="formgrid"><div class="field"><label for="firstPayMethod">Forma de pagamento</label><select id="firstPayMethod"><option value="pix">Pix</option><option value="card">Cartão de crédito</option></select></div></div><button onclick="createFirstItemCheckout('${cid}')">Gerar novo link da primeira peça</button> <button class="secondary" onclick="setFirstPaymentCombined('${cid}')">Autorizar pagamento combinado</button>`;
-  }
-  const pixSettings=db.paymentSettings||{};
-  if(items.length){
-    firstPanel+=`<div class="note"><b>Comanda da live</b><br>Envie a relação das peças e o valor para a cliente pagar diretamente pelo Pix. Enviar a comanda não registra recebimento nem finaliza a sacolinha.<br><button class="secondary" onclick="sendLiveBagInvoice('${cid}')">Enviar comanda da live pelo WhatsApp</button></div>`;
   }
   el('cart').innerHTML=(rows||'<div class="empty">Esta sacolinha está vazia.</div>')+
     `<div class="statline"><span>Subtotal</span><b>${money(subtotal)}</b></div><div class="statline"><span>Desconto administrativo</span><b>${money(discount)}</b></div><div class="statline"><b>Total das peças</b><b>${money(total)}</b></div>`+
