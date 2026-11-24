@@ -349,7 +349,7 @@ function render(){
   el('mClients').textContent=db.clients.length;el('mProducts').textContent=db.products.length;
   el('mAvailable').textContent=db.products.filter(p=>p.status==='Disponível').length;
   el('mBags').textContent=Object.values(db.bags).filter(a=>a.length).length;
-  renderClients();renderSuppliers();renderProducts();renderStock();renderSelectors();renderCart();renderBags();renderCloseRequests();renderSales();renderDeliveryRequests();
+  renderClients();renderSuppliers();renderProducts();renderStock();renderSelectors();renderCart();renderBags();renderCloseRequests();renderSales();renderDeliveryRequests();renderLiveSessionControls();renderResults();
 }
 function renderClients(){
   const q=(el('clientSearch').value||'').toLowerCase();
@@ -370,8 +370,101 @@ async function generateCustomerAccess(customerId){
 }
 async function setCustomerEmail(customerId){const customer=db.clients.find(x=>x.id===customerId);if(!customer)return;const email=prompt('E-mail que a cliente usará para criar o acesso ao portal:',customer.email||'');if(email===null)return;const normalized=email.trim().toLowerCase();if(normalized&&(!normalized.includes('@')||!normalized.split('@')[1]?.includes('.')))return alert('Informe um e-mail válido.');const {error}=await sb.from('customers').update({email:normalized||null}).eq('id',customerId);if(error)return reportError(error,'Não foi possível atualizar o e-mail.');await loadCloud();alert('E-mail do portal atualizado. Oriente a cliente a criar o acesso em portal.html.');}
 function renderSuppliers(){
-  el('supplierList').innerHTML=db.suppliers.map(s=>`<div class="statline"><span><b>${esc(s.name)}</b><br><small>${esc(s.phone)} • ${esc(ruleLabel(s.rule))}</small></span><span class="pill">Fornecedora</span></div>`).join('')||'<div class="empty">Nenhuma fornecedora cadastrada.</div>';
+  el('supplierList').innerHTML=db.suppliers.map(s=>'<div class="statline"><span><b>'+esc(s.name)+'</b><br><small>'+esc(s.phone)+' • '+esc(ruleLabel(s.rule))+'</small></span><span class="pill">Fornecedora</span></div>').join('')||'<div class="empty">Nenhuma fornecedora cadastrada.</div>';
+  el('supplierFinanceList').innerHTML=db.suppliers.map(s=>{
+    const sold=db.sales.flatMap(sale=>sale.items.filter(item=>item.supplierId===s.id).map(item=>Object.assign({},item,{saleDate:sale.closedAt})));
+    const consigned=sold.filter(item=>item.acquisitionType==='consignment');
+    const due=consigned.reduce((sum,item)=>sum+item.cost,0);
+    const paid=db.supplierPayments.filter(row=>row.supplier_id===s.id).reduce((sum,row)=>sum+Number(row.amount||0),0);
+    const pending=Math.max(0,due-paid);
+    const paymentRows=db.supplierPayments.filter(row=>row.supplier_id===s.id).map(row=>'<div class="statline"><span>Pagamento realizado<br><small>'+(row.paid_at?new Date(row.paid_at).toLocaleDateString('pt-BR'):'Data não informada')+' • '+esc(row.description||'')+'</small></span><b>'+money(row.amount)+'</b></div>').join('');
+    const soldRows=sold.map(item=>'<div class="statline"><span>'+esc(item.description)+' <small>• '+esc(typeLabel(item.acquisitionType))+'</small><br><small>Venda: '+(item.saleDate?new Date(item.saleDate).toLocaleDateString('pt-BR'):'Data não informada')+' • Repasse/custo: '+money(item.cost)+'</small></span><b>'+money(item.price)+'</b></div>').join('');
+    return '<div class="card" style="margin:12px 0"><div class="row between"><div><b>'+esc(s.name)+'</b><br><small class="small-muted">'+esc(ruleLabel(s.rule))+'</small></div><span class="pill">'+consigned.length+' consignada(s) vendida(s)</span></div><div class="grid" style="margin-top:10px"><div><small class="small-muted">Total devido</small><br><b>'+money(due)+'</b></div><div><small class="small-muted">Já pago</small><br><b>'+money(paid)+'</b></div><div><small class="small-muted">Pendente</small><br><b>'+money(pending)+'</b></div></div>'+(pending>0?'<button style="margin-top:10px" onclick="registerSupplierPayment(&quot;'+s.id+'&quot;)">Registrar pagamento à fornecedora</button>':'')+'<details style="margin-top:12px"><summary style="cursor:pointer;font-weight:700">Ver peças vendidas e datas ('+sold.length+')</summary>'+(soldRows||'<div class="empty">Nenhuma peça vendida desta fornecedora.</div>')+'</details><details style="margin-top:8px"><summary style="cursor:pointer;font-weight:700">Histórico de pagamentos ('+db.supplierPayments.filter(row=>row.supplier_id===s.id).length+')</summary>'+(paymentRows||'<div class="empty">Nenhum pagamento registrado.</div>')+'</details></div>';
+  }).join('')||'<div class="empty">Cadastre uma fornecedora para acompanhar vendas e repasses.</div>';
 }
+async function registerSupplierPayment(supplierId){
+  const supplier=db.suppliers.find(row=>row.id===supplierId);if(!supplier)return;
+  const sold=db.sales.flatMap(sale=>sale.items.filter(item=>item.supplierId===supplierId&&item.acquisitionType==='consignment'));
+  const due=sold.reduce((sum,item)=>sum+item.cost,0);
+  const paid=db.supplierPayments.filter(row=>row.supplier_id===supplierId).reduce((sum,row)=>sum+Number(row.amount||0),0);
+  const remaining=Math.max(0,due-paid);if(remaining<=0)return alert('Não há saldo pendente para esta fornecedora.');
+  const raw=prompt('Quanto você pagou para '+supplier.name+'? Saldo pendente: '+money(remaining),remaining.toFixed(2).replace('.',','));if(raw===null)return;
+  const amount=Number(String(raw).trim().replace(/\./g,'').replace(',','.'));
+  if(!Number.isFinite(amount)||amount<=0||amount>remaining+0.001)return alert('Informe um valor válido, até '+money(remaining)+'.');
+  const date=prompt('Data do pagamento (AAAA-MM-DD):',new Date().toLocaleDateString('en-CA'));if(date===null)return;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||Number.isNaN(new Date(date+'T12:00:00').getTime()))return alert('Informe a data no formato AAAA-MM-DD.');
+  const description=prompt('Observação do pagamento (opcional):','')||null;
+  const {error}=await sb.rpc('admin_register_supplier_payment',{p_supplier_id:supplierId,p_amount:amount,p_paid_at:new Date(date+'T12:00:00').toISOString(),p_description:description});
+  if(error)return reportError(error,'Não foi possível registrar o pagamento à fornecedora.');
+  await loadCloud();alert('Pagamento registrado. O saldo pendente da fornecedora foi atualizado.');
+}
+async function startLiveSession(){
+  const title=el('liveTitle').value.trim();if(!title)return alert('Dê um nome para esta live.');
+  const active=db.liveSessions.filter(row=>row.status==='open'&&!row.ended_at);
+  if(active.length)return alert('Já existe uma live aberta: '+active[0].title+'. Encerre essa live antes de iniciar outra.');
+  const {error}=await sb.from('live_sessions').insert({title,platform:el('livePlatform').value,status:'open'});if(error)return reportError(error,'Não foi possível iniciar a live.');
+  el('liveTitle').value='';await loadCloud();alert('Live iniciada. As próximas peças bipadas ficarão vinculadas a ela.');
+}
+async function endLiveSession(){
+  const active=db.liveSessions.find(row=>row.status==='open'&&!row.ended_at);
+  if(!active)return alert('Não há live aberta no momento.');
+  if(!confirm('Encerrar a live "'+active.title+'"?'))return;
+  const {error}=await sb.from('live_sessions').update({status:'closed',ended_at:new Date().toISOString()}).eq('id',active.id);
+  if(error)return reportError(error,'Não foi possível encerrar a live.');
+  await loadCloud();alert('Live encerrada. O resultado dela ficará disponível na aba Lucros e resultados.');
+}
+function renderLiveSessionControls(){
+  const active=db.liveSessions.find(row=>row.status==='open'&&!row.ended_at);
+  const label=active?'<div class="note"><b>Live em andamento:</b> '+esc(active.title)+' • '+esc(active.platform||'Plataforma não informada')+' • iniciada em '+new Date(active.started_at).toLocaleString('pt-BR')+'</div>':'<div class="note">Nenhuma live em andamento. Inicie uma live antes de começar as vendas para separar o resultado por transmissão.</div>';
+  el('liveSessionControls').innerHTML=label;
+}
+function renderResults(){
+  const mode=el('reportMode')?.value||'month';
+  const monthField=el('reportMonthField'),weekField=el('reportWeekField'),liveField=el('reportLiveField');
+  if(!monthField)return;
+  monthField.style.display=mode==='month'?'block':'none';weekField.style.display=mode==='week'?'block':'none';liveField.style.display=mode==='live'?'block':'none';
+  if(!el('reportMonth').value)el('reportMonth').value=new Date().toLocaleDateString('en-CA').slice(0,7);
+  if(!el('reportWeekDate').value)el('reportWeekDate').value=new Date().toLocaleDateString('en-CA');
+  const liveSelect=el('reportLiveSession'),selectedLive=liveSelect.value;
+  liveSelect.innerHTML='<option value="">Selecione uma live</option>'+db.liveSessions.map(row=>'<option value="'+row.id+'">'+esc(row.title)+' • '+new Date(row.started_at).toLocaleDateString('pt-BR')+' • '+esc(row.platform||'')+'</option>').join('');
+  if(db.liveSessions.some(row=>row.id===selectedLive))liveSelect.value=selectedLive;
+  let start=null,end=null,liveId=null;
+  if(mode==='month'){
+    const value=el('reportMonth').value;if(value){start=new Date(value+'-01T00:00:00');end=new Date(start);end.setMonth(end.getMonth()+1);}
+  }else if(mode==='week'){
+    const value=el('reportWeekDate').value;if(value){start=new Date(value+'T00:00:00');const day=(start.getDay()+6)%7;start.setDate(start.getDate()-day);end=new Date(start);end.setDate(end.getDate()+7);}
+  }else{liveId=liveSelect.value;}
+  let selectedSales=db.sales;
+  if(mode==='month'||mode==='week'){
+    if(!start||!end){el('reportSummary').innerHTML='';el('reportDetails').innerHTML='';return;}
+    selectedSales=db.sales.filter(sale=>sale.closedAt&&new Date(sale.closedAt)>=start&&new Date(sale.closedAt)<end);
+  }else if(liveId){selectedSales=db.sales.filter(sale=>sale.items.some(item=>item.liveSessionId===liveId));}
+  else selectedSales=[];
+  let revenue=0,cost=0,received=0;const detailRows=[];
+  for(const sale of selectedSales){
+    const bagGross=sale.items.reduce((sum,item)=>sum+item.price,0);
+    const items=mode==='live'?sale.items.filter(item=>item.liveSessionId===liveId):sale.items;
+    const chosenGross=items.reduce((sum,item)=>sum+item.price,0);
+    const discountShare=bagGross>0?sale.discount*(chosenGross/bagGross):0;
+    const net=chosenGross-discountShare;
+    const itemCost=items.reduce((sum,item)=>sum+item.cost,0);
+    revenue+=net;cost+=itemCost;
+    const customer=db.clients.find(row=>row.id===sale.customerId);
+    detailRows.push('<div class="statline"><span><b>'+esc(customer?.name||'Cliente')+'</b><br><small>'+items.length+' peça(s) • '+(sale.closedAt?new Date(sale.closedAt).toLocaleDateString('pt-BR'):'Data não informada')+'</small></span><span style="text-align:right"><b>'+money(net)+'</b><br><small>Custo/repasse '+money(itemCost)+'</small></span></div>');
+    const paidRows=db.payments.filter(payment=>payment.bag_id===sale.id&&payment.status==='paid'&&!payment.superseded_at);
+    const paidValue=paidRows.reduce((sum,payment)=>sum+Number(payment.base_amount??payment.amount??0),0);
+    if(mode==='live')received+=bagGross>0?paidValue*(chosenGross/bagGross):0;
+  }
+  if(mode!=='live'&&start&&end){
+    const closedIds=new Set(selectedSales.map(sale=>sale.id));
+    received=db.payments.filter(payment=>closedIds.has(payment.bag_id)&&payment.status==='paid'&&!payment.superseded_at&&payment.paid_at&&new Date(payment.paid_at)>=start&&new Date(payment.paid_at)<end).reduce((sum,payment)=>sum+Number(payment.base_amount??payment.amount??0),0);
+  }
+  const profit=revenue-cost;
+  const cards=[['Vendas líquidas',revenue],['Custo / repasse',cost],['Lucro bruto',profit],['Recebido',received]];
+  el('reportSummary').innerHTML=cards.map(([label,value])=>'<div class="card metric"><span>'+label+'</span><strong>'+money(value)+'</strong></div>').join('');
+  el('reportDetails').innerHTML='<h3>Vendas do período ('+selectedSales.length+')</h3>'+(detailRows.join('')||'<div class="empty">'+(mode==='live'&&!liveId?'Selecione uma live para consultar o resultado.':'Nenhuma venda concluída neste período.')+'</div>');
+}
+
 function renderProducts(){
   el('productList').innerHTML=db.products.map(p=>`<div class="statline"><span><b>${esc(p.desc)}</b> <small>• ${esc(p.short)} • ${esc(p.barcode)}</small><br><small>${esc(typeLabel(p.type))} • ${esc(p.supplier||'Sem fornecedora')} • Custo ${money(p.cost)}</small><br><b>${money(p.price)}</b> <span class="pill">${esc(p.status)}</span></span><button class="secondary" onclick="label('${esc(p.id)}')">Etiqueta</button></div>`).join('')||'<div class="empty">Nenhum produto cadastrado.</div>';
 }
