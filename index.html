@@ -834,7 +834,7 @@ function renderSales(){
     }).join('')||'<div class="empty">Nenhum pagamento vinculado a esta venda.</div>';
     const itemHtml=sale.items.map(item=>'<div class="statline"><span>'+esc(item.description)+'<br><small>'+esc(item.size||'Tamanho não informado')+'</small></span><b>'+money(item.price)+'</b></div>').join('');
     const closed=sale.closedAt?new Date(sale.closedAt).toLocaleString('pt-BR'):'Data não informada';
-    return '<details class="card" style="margin:12px 0"><summary style="cursor:pointer"><b>'+esc(customer?.name||'Cliente não identificada')+'</b><br><small>'+closed+' • '+sale.items.length+' peça(s)</small><br><b>'+money(total)+'</b></summary><div style="margin-top:12px"><b>Nota da compra</b>'+itemHtml+'<div class="statline"><span>Subtotal</span><b>'+money(subtotal)+'</b></div>'+(sale.discount>0?'<div class="statline"><span>Desconto</span><b>− '+money(sale.discount)+'</b></div>':'')+'<div class="statline"><b>Total da venda</b><b>'+money(total)+'</b></div><h4>Histórico de pagamentos</h4>'+paymentHtml+'<div style="margin-top:14px"><button class="danger" onclick="deleteCompletedSale(\''+sale.id+'\')">Excluir venda de teste e devolver peças ao estoque</button><p class="small-muted">Use somente para corrigir vendas de teste. Pagamentos reais confirmados não podem ser apagados por esta opção.</p></div></div></details>';
+    return '<details class="card" style="margin:12px 0"><summary style="cursor:pointer"><b>'+esc(customer?.name||'Cliente não identificada')+'</b><br><small>'+closed+' • '+sale.items.length+' peça(s)</small><br><b>'+money(total)+'</b></summary><div style="margin-top:12px"><b>Nota da compra</b>'+itemHtml+'<div class="statline"><span>Subtotal</span><b>'+money(subtotal)+'</b></div>'+(sale.discount>0?'<div class="statline"><span>Desconto</span><b>− '+money(sale.discount)+'</b></div>':'')+'<div class="statline"><b>Total da venda</b><b>'+money(total)+'</b></div><h4>Histórico de pagamentos</h4>'+paymentHtml+'<div style="margin-top:14px"><button class="danger" onclick="deleteCompletedSale(\''+sale.id+'\')">Excluir venda e devolver peças ao estoque</button><p class="small-muted">Se a cliente já pagou, faça a devolução do dinheiro por fora antes de excluir. A exclusão remove a venda dos relatórios e devolve as peças ao estoque.</p></div></div></details>';
   }).join('');
   el('salesList').innerHTML=rows||'<div class="empty">Nenhuma venda concluída encontrada.</div>';
 }
@@ -843,10 +843,10 @@ async function deleteCompletedSale(bagId){
   if(!sale)return alert('Não encontrei esta venda concluída. Atualize o painel.');
   const customer=db.clients.find(row=>row.id===sale.customerId);
   const names=sale.items.map(item=>item.description).join(', ');
-  const confirmation='Excluir a venda de '+(customer?.name||'cliente')+'?\\n\\nPeças: '+names+'\\n\\nAs peças voltarão para o estoque como disponíveis, a venda sairá do histórico e deixará de contar nos relatórios. Links pendentes serão cancelados. Esta ação não pode ser desfeita.';
+  const confirmation='ATENÇÃO — CONFIRME A DEVOLUÇÃO\\n\\nA venda de '+(customer?.name||'cliente')+' será excluída definitivamente.\\n\\nPeças: '+names+'\\n\\nAs peças voltarão para o estoque, e a venda deixará de contar no faturamento e nos relatórios de lucro. Os pagamentos serão removidos do histórico desta sacolinha.\\n\\nSe a cliente já pagou, confirme que você JÁ DEVOLVEU o dinheiro por fora (Pix, banco ou cartão). O PDV não faz o estorno financeiro.\\n\\nDeseja continuar?';
   if(!confirm(confirmation))return;
   const {data,error}=await sb.rpc('admin_delete_completed_sale',{p_bag_id:bagId});
-  if(error)return reportError(error,'Não foi possível excluir esta venda. Se houve pagamento real, ele precisa ser estornado/ajustado primeiro.');
+  if(error)return reportError(error,'Não foi possível excluir esta venda. Confira se ela ainda está concluída e tente novamente.');
   await loadCloud();
   alert('Venda excluída. As peças foram devolvidas ao estoque e não aparecem mais no faturamento ou lucro.');
 }
