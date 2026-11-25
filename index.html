@@ -693,7 +693,7 @@ function renderResults(){
 }
 
 function renderProducts(){
-  el('productList').innerHTML=db.products.map(p=>`<div class="statline"><span><b>${esc(p.desc)}</b> <small>• ${esc(p.short)} • ${esc(p.barcode)}</small><br><small>${esc(typeLabel(p.type))} • ${esc(p.supplier||'Sem fornecedora')} • Custo ${money(p.cost)}</small><br><b>${money(p.price)}</b> <span class="pill">${esc(p.status)}</span></span><div class="row"><button class="secondary" onclick="editProduct('${esc(p.id)}')">Editar</button><button class="secondary" onclick="label('${esc(p.id)}')">Etiqueta</button>${p.status==='Disponível'?'<button class="danger" onclick="deleteProduct('${esc(p.id)}')">Excluir</button>':''}</div></div>`).join('')||'<div class="empty">Nenhum produto cadastrado.</div>';
+  el('productList').innerHTML=db.products.map(p=>`<div class="statline"><span><b>${esc(p.desc)}</b> <small>• ${esc(p.short)} • ${esc(p.barcode)}</small><br><small>${esc(typeLabel(p.type))} • ${esc(p.supplier||'Sem fornecedora')} • Custo ${money(p.cost)}</small><br><b>${money(p.price)}</b> <span class="pill">${esc(p.status)}</span></span><div class="row"><button class="secondary" onclick="editProduct('${esc(p.id)}')">Editar</button><button class="secondary" onclick="label('${esc(p.id)}')">Etiqueta</button>${p.status==='Disponível' ? `<button class="danger" onclick="deleteProduct('${esc(p.id)}')">Excluir</button>` : ''}</div></div>`).join('')||'<div class="empty">Nenhum produto cadastrado.</div>';
 }
 async function editProduct(productId){
   const product=db.products.find(p=>p.id===productId);if(!product)return alert('Produto não encontrado.');
