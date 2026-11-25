@@ -648,7 +648,7 @@ async function registerSupplierProductReturn(productId){
   if(!confirm('Registrar a devolução de "'+product.desc+'" à fornecedora? A peça sairá do estoque disponível, mas seu cadastro e histórico serão preservados.'))return;
   const now=new Date(),today=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
   const raw=prompt('Data da devolução (AAAA-MM-DD):',today);if(raw===null)return;
-  if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(raw)||Number.isNaN(new Date(raw+'T12:00:00').getTime()))return alert('Informe uma data válida no formato AAAA-MM-DD.');
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(raw)||Number.isNaN(new Date(raw+'T12:00:00').getTime()))return alert('Informe uma data válida no formato AAAA-MM-DD.');
   const notes=prompt('Observação da devolução (opcional):','')||null;
   const {error}=await sb.rpc('admin_return_supplier_product',{p_product_id:productId,p_returned_at:raw,p_notes:notes});
   if(error)return reportError(error,'Não foi possível registrar a devolução.');
