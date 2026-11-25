@@ -480,17 +480,23 @@ async function selectLiveProduct(productId){
 }
 async function removeBagItem(customerId,itemId){
   const meta=db.bagMeta[customerId],items=db.bags[customerId]||[];
-  if(meta?.firstPayment?.status==='pending')return alert('A primeira peça está aguardando pagamento. Não remova esta peça até a cobrança ser resolvida.');
   if(meta?.firstPayment?.status==='paid'&&items[0]?.id===itemId)return alert('A primeira peça já foi paga e não pode ser removida por esta ação.');
   if(meta?.lateSupersededPayments?.length)return alert('Um link antigo foi pago depois de substituído. Confira esse recebimento antes de fazer novas alterações na sacolinha.');
-  const hasPendingBalance=meta?.balancePayment?.status==='pending';
-  if(!confirm('Remover esta peça da sacolinha e devolver ao estoque? O saldo será recalculado. '+(hasPendingBalance?'A cobrança anterior ficará substituída; depois você poderá gerar e enviar um novo link.':'')))return;
+  const hasPendingCheckout=!!meta?.firstPayment?.status==='pending'||meta?.balancePayment?.status==='pending';
+  if(!confirm('Remover esta peça da sacolinha e devolver ao estoque? O saldo será recalculado. '+(hasPendingCheckout?'A cobrança pendente será substituída. O checkout antigo será expirado quando o Mercado Pago permitir.':'')))return;
   try{
     const {data,error}=await sb.functions.invoke('admin-remove-bag-item',{body:{item_id:itemId}});
     if(error)throw error;
     if(data?.error)throw new Error(data.error+(data.details?'\n'+data.details:''));
     await loadCloud();
-    alert('Peça removida e saldo recalculado. '+(data?.previous_link_replaced?'A cobrança anterior ficou substituída. Gere a nova cobrança e avise a cliente para desconsiderar o link anterior.':''));
+    let notice='Peça removida e saldo recalculado.';
+    if(data?.previous_link_replaced){
+      notice+=' A cobrança anterior foi marcada como substituída.';
+      if(Number(data?.expired_links||0)>0)notice+=' O Mercado Pago confirmou a atualização/expiração de '+data.expired_links+' checkout(s).';
+      if(Number(data?.links_expiration_failed||0)>0)notice+=' Atenção: não foi possível confirmar a expiração de '+data.links_expiration_failed+' checkout(s). Avise a cliente para não pagar o link antigo e confira no Mercado Pago se ele continua ativo.';
+      notice+=' Se algum link antigo for pago depois, o recebimento ficará destacado no histórico para conferência e não será abatido automaticamente da sacolinha atual.';
+    }
+    alert(notice);
   }catch(err){reportError(err,'Não foi possível remover a peça.');}
 }
 
