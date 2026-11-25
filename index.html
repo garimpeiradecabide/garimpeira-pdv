@@ -551,6 +551,8 @@ async function generateCustomerAccess(customerId){
   if(!customer.phone)return alert('Cadastre o celular da cliente primeiro.');
   const action=customer.authUserId?'Gerar um novo acesso provisório':'Criar acesso';
   if(!confirm(action+' para '+customer.name+' usando o celular '+customer.phone+'? A senha provisória anterior deixará de funcionar.'))return;
+  delete pendingCustomerAccess[customerId];
+  renderClients();
   const {data,error}=await sb.functions.invoke('admin-create-customer-login',{body:{customer_id:customerId}});
   if(error)return reportError(error,'Não foi possível gerar o acesso da cliente.');
   if(data?.error)return alert(data.error);
