@@ -492,7 +492,7 @@ async function removeBagItem(customerId,itemId){
     let notice='Peça removida e saldo recalculado.';
     if(data?.previous_link_replaced){
       notice+=' A cobrança anterior foi marcada como substituída.';
-      if(Number(data?.expired_links||0)>0)notice+=' O Mercado Pago confirmou a atualização/expiração de '+data.expired_links+' checkout(s).';
+      if(Number(data?.expired_links||0)>0)notice+=' O Mercado Pago aceitou a atualização para expirar '+data.expired_links+' checkout(s).';
       if(Number(data?.links_expiration_failed||0)>0)notice+=' Atenção: não foi possível confirmar a expiração de '+data.links_expiration_failed+' checkout(s). Avise a cliente para não pagar o link antigo e confira no Mercado Pago se ele continua ativo.';
       notice+=' Se algum link antigo for pago depois, o recebimento ficará destacado no histórico para conferência e não será abatido automaticamente da sacolinha atual.';
     }
