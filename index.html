@@ -533,7 +533,7 @@ async function generateCustomerAccess(customerId){
 }
 async function setCustomerEmail(customerId){const customer=db.clients.find(x=>x.id===customerId);if(!customer)return;const email=prompt('E-mail que a cliente usará para criar o acesso ao portal:',customer.email||'');if(email===null)return;const normalized=email.trim().toLowerCase();if(normalized&&(!normalized.includes('@')||!normalized.split('@')[1]?.includes('.')))return alert('Informe um e-mail válido.');const {error}=await sb.from('customers').update({email:normalized||null}).eq('id',customerId);if(error)return reportError(error,'Não foi possível atualizar o e-mail.');await loadCloud();alert('E-mail do portal atualizado. Oriente a cliente a criar o acesso em portal.html.');}
 function renderSuppliers(){
-  el('supplierList').innerHTML=db.suppliers.map(s=>'<div class="statline"><b>'+esc(s.name)+'</b><div class="row"><button class="secondary" onclick="editSupplier(\\''+s.id+'\\')">Editar nome</button>'+(s.active?'<button class="secondary" onclick="deleteSupplier(\\''+s.id+'\\')">Excluir</button>':'<button class="secondary" onclick="toggleSupplierActive(\\''+s.id+'\\')">Reativar</button>')+'</div></div>').join('')||'<div class="empty">Nenhuma fornecedora cadastrada.</div>';
+  el('supplierList').innerHTML=db.suppliers.map(s=>'<div class="statline"><b>'+esc(s.name)+'</b><div class="row"><button class="secondary" onclick="editSupplier(\''+s.id+'\')">Editar nome</button>'+(s.active?'<button class="secondary" onclick="deleteSupplier(\''+s.id+'\')">Excluir</button>':'<button class="secondary" onclick="toggleSupplierActive(\''+s.id+'\')">Reativar</button>')+'</div></div>').join('')||'<div class="empty">Nenhuma fornecedora cadastrada.</div>';
 }
 
 async function registerSupplierPayment(supplierId){
