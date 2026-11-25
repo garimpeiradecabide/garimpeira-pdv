@@ -153,7 +153,7 @@ table{width:100%;border-collapse:collapse;margin-top:12px;background:white}th,td
 const SUPABASE_URL = 'https://gcyuvbakxswkjcyqscth.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_haoKT8vSzAEpxwfsapBM1A_4REUsg8T';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-let db = {clients:[], suppliers:[], products:[], supplierLots:[], supplierLotReturns:[], bags:{}, bagMeta:{}, closeRequests:{}, paymentSettings:null, payments:[], sales:[], deliveries:[], liveSessions:[], supplierPayments:[]};
+let db = {clients:[], suppliers:[], products:[], supplierLots:[], supplierLotReturns:[], bags:{}, bagMeta:{}, closeRequests:{}, paymentSettings:null, payments:[], sales:[], deliveries:[], liveSessions:[], supplierPayments:[], legacyEvents:[]};
 let currentUser = null;
 let cameraScanner = null;
 let cameraTarget = null;
@@ -197,7 +197,7 @@ el('loginForm').addEventListener('submit',async e=>{
   catch(err){console.error(err);el('loginMessage').textContent='Não foi possível entrar: '+(err.message||'verifique e-mail e senha');}
 });
 async function loadCloud(){
-  const [c,s,p,b,bi,cr,ps,pay,closedBags,soldItems,deliveryRows,liveSessions,supplierPayments,lots,lotReturns]=await Promise.all([
+  const [c,s,p,b,bi,cr,ps,pay,closedBags,soldItems,deliveryRows,liveSessions,supplierPayments,lots,lotReturns,legacyEvents]=await Promise.all([
     sb.from('customers').select('*').order('created_at',{ascending:false}),
     sb.from('suppliers').select('*').order('name'),
     sb.from('products').select('*').order('created_at',{ascending:false}),
@@ -212,12 +212,13 @@ async function loadCloud(){
     sb.from('live_sessions').select('*').order('started_at',{ascending:false}),
     sb.from('supplier_payments').select('*').order('paid_at',{ascending:false}),
     sb.from('supplier_lots').select('*').order('entered_at',{ascending:false}),
-    sb.from('supplier_lot_returns').select('*').order('returned_at',{ascending:false})
+    sb.from('supplier_lot_returns').select('*').order('returned_at',{ascending:false}),
+    sb.from('supplier_legacy_events').select('*').order('event_date',{ascending:false})
   ]);
-  for(const r of [c,s,p,b,bi,cr,ps,pay,closedBags,soldItems,deliveryRows,liveSessions,supplierPayments,lots,lotReturns]) if(r.error) throw r.error;
+  for(const r of [c,s,p,b,bi,cr,ps,pay,closedBags,soldItems,deliveryRows,liveSessions,supplierPayments,lots,lotReturns,legacyEvents]) if(r.error) throw r.error;
   db.clients=c.data.map(x=>({id:x.id,name:x.name,phone:x.phone||'',email:x.email||'',authUserId:x.auth_user_id||null,obs:x.notes||''}));
   db.liveSessions=liveSessions.data||[];db.supplierPayments=supplierPayments.data||[];
-  db.supplierLots=lots.data||[];db.supplierLotReturns=lotReturns.data||[];
+  db.supplierLots=lots.data||[];db.supplierLotReturns=lotReturns.data||[];db.legacyEvents=legacyEvents.data||[];
   db.suppliers=s.data.map(x=>({id:x.id,name:x.name,phone:x.phone||'',rule:x.settlement_rule||'',notes:x.notes||'',active:x.active!==false}));
   db.products=p.data.map(x=>({id:x.id,desc:x.description,short:x.short_code||'',size:x.size||'',cost:Number(x.cost||0),price:Number(x.sale_price||0),supplierId:x.supplier_id,supplierLotId:x.supplier_lot_id||null,supplier:(s.data.find(y=>y.id===x.supplier_id)||{}).name||'',type:x.acquisition_type,barcode:x.barcode||'',status:x.status==='available'?'Disponível':x.status==='reserved'?'Reservada':x.status==='sold'?'Vendida':'Baixada'}));
   db.bags={};db.bagMeta={};db.closeRequests={};db.paymentSettings=ps.data;db.payments=pay.data||[];
