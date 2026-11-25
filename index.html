@@ -619,20 +619,28 @@ function renderSuppliers(){
   const supplier=db.suppliers.find(row=>row.id===selectedSupplierId);
   let detail='';
   if(supplier){
-    const sold=db.sales.flatMap(sale=>sale.items.filter(item=>item.supplierId===supplier.id&&item.acquisitionType==='consignment').map(item=>({...item,saleDate:sale.closedAt||sale.createdAt}))).sort((a,b)=>new Date(b.saleDate)-new Date(a.saleDate));
-    const due=sold.reduce((sum,item)=>sum+Number(item.cost||0),0);
+    // A ficha mostra compras e consignações; somente consignações entram no acerto.
+    const sold=db.sales.flatMap(sale=>sale.items.filter(item=>item.supplierId===supplier.id).map(item=>({...item,saleDate:sale.closedAt||sale.createdAt}))).sort((a,b)=>new Date(b.saleDate)-new Date(a.saleDate));
+    const due=sold.filter(item=>item.acquisitionType==='consignment').reduce((sum,item)=>sum+Number(item.cost||0),0);
     const payments=db.supplierPayments.filter(row=>row.supplier_id===supplier.id).sort((a,b)=>new Date(b.paid_at)-new Date(a.paid_at));
     const paid=payments.reduce((sum,row)=>sum+Number(row.amount||0),0);
     const pending=Math.max(0,due-paid);
-    const available=db.products.filter(p=>p.supplierId===supplier.id&&p.type==='consignment'&&p.status==='Disponível');
+    // Inclui peças disponíveis e reservadas, independentemente de Compra ou Consignação.
+    const inStock=db.products.filter(p=>p.supplierId===supplier.id&&['Disponível','Reservada'].includes(p.status));
     const returns=db.supplierProductReturns.filter(row=>row.supplier_id===supplier.id).sort((a,b)=>new Date(b.returned_at)-new Date(a.returned_at));
-    const soldHtml=sold.length?sold.map(item=>'<div class="statline"><span><b>'+esc(item.description||'Peça')+'</b><br><small>Data da venda: '+dateBR(item.saleDate)+'</small></span><b>Repasse: '+money(item.cost)+'</b></div>').join(''):'<div class="empty">Nenhuma peça consignada vendida.</div>';
-    const availableHtml=available.length?available.map(p=>'<div class="statline"><span><b>'+esc(p.desc||'Peça')+'</b></span><button class="secondary" data-return-product="'+esc(p.id)+'">Registrar devolução</button></div>').join(''):'<div class="empty">Não há peças disponíveis desta fornecedora para devolver.</div>';
-    const filters='<div class="row" style="margin:10px 0 14px"><button type="button" class="'+(supplierPieceFilter==='all'?'':'secondary')+'" data-piece-filter="all">Todas ('+(sold.length+available.length)+')</button><button type="button" class="'+(supplierPieceFilter==='sold'?'':'secondary')+'" data-piece-filter="sold">Vendidas ('+sold.length+')</button><button type="button" class="'+(supplierPieceFilter==='available'?'':'secondary')+'" data-piece-filter="available">Disponíveis ('+available.length+')</button></div>';
+    const soldHtml=sold.length?sold.map(item=>{
+      const consigned=item.acquisitionType==='consignment';
+      return '<div class="statline"><span><b>'+esc(item.description||'Peça')+'</b><br><small>'+dateBR(item.saleDate)+' • '+(consigned?'Consignação':'Compra / estoque próprio')+'</small></span><b>'+(consigned?'Repasse: '+money(item.cost):'Sem repasse')+'</b></div>';
+    }).join(''):'<div class="empty">Nenhuma peça vendida desta fornecedora.</div>';
+    const availableHtml=inStock.length?inStock.map(p=>{
+      const action=p.type==='consignment'&&p.status==='Disponível'?'<button class="secondary" data-return-product="'+esc(p.id)+'">Registrar devolução</button>':'';
+      return '<div class="statline"><span><b>'+esc(p.desc||'Peça')+'</b><br><small>'+esc(p.type==='consignment'?'Consignação':'Compra / estoque próprio')+' • '+esc(p.status)+'</small></span>'+action+'</div>';
+    }).join(''):'<div class="empty">Não há peças no estoque desta fornecedora.</div>';
+    const filters='<div class="row" style="margin:10px 0 14px"><button type="button" class="'+(supplierPieceFilter==='all'?'':'secondary')+'" data-piece-filter="all">Todas ('+(sold.length+inStock.length)+')</button><button type="button" class="'+(supplierPieceFilter==='sold'?'':'secondary')+'" data-piece-filter="sold">Vendidas ('+sold.length+')</button><button type="button" class="'+(supplierPieceFilter==='available'?'':'secondary')+'" data-piece-filter="available">No estoque ('+inStock.length+')</button></div>';
     let pieces=filters;
-    if(supplierPieceFilter==='all'||supplierPieceFilter==='sold')pieces+='<h4>Peças vendidas em consignação ('+sold.length+')</h4>'+soldHtml;
-    if(supplierPieceFilter==='all'||supplierPieceFilter==='available')pieces+='<h4 style="margin-top:22px">Peças disponíveis para devolução ('+available.length+')</h4>'+availableHtml;
-    detail='<div class="card" style="margin-top:18px;border:1px solid var(--line)"><h3>Acerto — '+esc(supplier.name)+'</h3><div class="formgrid"><div class="statline"><span>Total a repassar</span><b>'+money(due)+'</b></div><div class="statline"><span>Já pago</span><b>'+money(paid)+'</b></div><div class="statline"><span>Saldo pendente</span><b>'+money(pending)+'</b></div></div><div class="row" style="margin:12px 0"><button onclick="registerSupplierPayment(&quot;'+esc(supplier.id)+'&quot;)" '+(pending<=0?'disabled':'')+'>Registrar pagamento</button><button class="secondary" onclick="selectedSupplierId=null;renderSuppliers()">Fechar ficha</button></div>'+pieces;
+    if(supplierPieceFilter==='all'||supplierPieceFilter==='sold')pieces+='<h4>Peças vendidas ('+sold.length+')</h4>'+soldHtml;
+    if(supplierPieceFilter==='all'||supplierPieceFilter==='available')pieces+='<h4 style="margin-top:22px">Peças no estoque ('+inStock.length+')</h4>'+availableHtml;
+    detail='<div class="card" style="margin-top:18px;border:1px solid var(--line)"><h3>Acerto — '+esc(supplier.name)+'</h3><div class="formgrid"><div class="statline"><span>Total a repassar (somente consignação)</span><b>'+money(due)+'</b></div><div class="statline"><span>Já pago</span><b>'+money(paid)+'</b></div><div class="statline"><span>Saldo pendente</span><b>'+money(pending)+'</b></div></div><div class="row" style="margin:12px 0"><button onclick="registerSupplierPayment(&quot;'+esc(supplier.id)+'&quot;)" '+(pending<=0?'disabled':'')+'>Registrar pagamento</button><button class="secondary" onclick="selectedSupplierId=null;renderSuppliers()">Fechar ficha</button></div>'+pieces;
     detail+='<h4 style="margin-top:22px">Histórico de pagamentos</h4>';
     detail+=payments.length?payments.map(row=>'<div class="statline"><span><b>'+money(row.amount)+'</b><br><small>'+dateBR(row.paid_at)+' • '+esc(row.description||'Pagamento registrado')+'</small></span><span class="pill">Pago</span></div>').join(''):'<div class="empty">Nenhum pagamento registrado.</div>';
     detail+='<h4 style="margin-top:22px">Histórico de devoluções</h4>';
