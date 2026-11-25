@@ -123,7 +123,7 @@ table{width:100%;border-collapse:collapse;margin-top:12px;background:white}th,td
       <div class="field"><label for="scan">Código de barras da peça</label><input id="scan" inputmode="numeric" autocomplete="off" placeholder="Use o leitor físico ou digite o código" onkeydown="if(event.key==='Enter'){event.preventDefault();scanProduct()}"><button type="button" class="secondary" style="margin-top:6px;width:100%" onclick="activatePhysicalScanner()">⌨️ Ativar leitor USB / Bluetooth</button><button type="button" class="secondary" style="margin-top:6px;width:100%" onclick="openCameraScan('live')">📷 Bipar com a câmera do celular</button><small class="small-muted" id="physicalScannerStatus">Leitor físico: conecte por USB ou Bluetooth em modo teclado e deixe o cursor neste campo. A leitura com Enter adiciona a peça.</small></div>
       <div class="field"><label for="shortScan">Ou código curto da live</label><input id="shortScan" placeholder="Ex.: 025" onkeydown="if(event.key==='Enter'){event.preventDefault();scanShort()}"></div>
       <div class="field"><label for="liveSearch">Pesquisar peça pelo nome, tamanho, código de live ou barras</label><input id="liveSearch" placeholder="Digite parte da descrição ou um código..." oninput="searchLiveProducts()"></div>
-    </div><div id="liveSearchResults"></div><div class="row"><button onclick="scanProduct()">Adicionar código</button><button class="secondary" onclick="scanShort()">Adicionar código curto</button><button class="secondary" onclick="show('clients')">Cadastrar cliente</button></div>
+    </div><div id="liveSearchResults"></div><div id="pendingProduct"></div><div class="row"><button onclick="scanProduct()">Adicionar código</button><button class="secondary" onclick="scanShort()">Adicionar código curto</button><button class="secondary" onclick="show('clients')">Cadastrar cliente</button></div>
     <div id="cart"></div><div class="note">Cada peça reservada é registrada no banco e fica vinculada à sacolinha da cliente.</div>
   </div></section>
   <section id="bags" class="panel"><div class="card"><h3>Solicitações de fechamento</h3><p class="sub">Pedidos enviados pelas clientes, aguardando conferência da Garimpeira.</p><div id="closeRequestList"></div></div><div class="card"><h3>Sacolinhas permanentes</h3><div id="bagList"></div></div></section>
@@ -242,7 +242,7 @@ async function loadCloud(){
   for(const item of bi.data){
     const bag=bagById.get(item.bag_id);if(!bag)continue;
     if(!db.bags[bag.customer_id])db.bags[bag.customer_id]=[];
-    db.bags[bag.customer_id].push({id:item.id,productId:item.product_id,price:Number(item.price_snapshot||0),description:item.description_snapshot||'',size:item.size_snapshot||''});
+    db.bags[bag.customer_id].push({id:item.id,productId:item.product_id,price:Number(item.price_snapshot||0),originalPrice:Number(item.original_price_snapshot??item.price_snapshot??0),itemDiscount:Number(item.item_discount_amount||0),description:item.description_snapshot||'',size:item.size_snapshot||''});
   }
   render();
 }
@@ -417,13 +417,36 @@ async function addProduct(){
 function getOpenBag(customerId){
   return sb.from('bags').select('*').eq('customer_id',customerId).eq('status','open').order('created_at',{ascending:false}).limit(1).maybeSingle();
 }
+let pendingProductToAdd=null;
+function renderPendingProduct(){
+  const target=el('pendingProduct');if(!target)return;
+  if(!pendingProductToAdd){target.innerHTML='';return;}
+  const p=pendingProductToAdd;
+  target.innerHTML=`<div class="note" style="border:1px solid var(--line);padding:12px;margin:10px 0"><b>Peça lida: ${esc(p.desc)}</b><br><small>Tamanho: ${esc(p.size||'Não informado')} • Preço original: ${money(p.price)}</small><div class="field" style="margin-top:10px"><label for="pendingItemDiscount">Desconto nesta peça (R$)</label><input id="pendingItemDiscount" type="number" min="0" max="${Math.max(0,Number(p.price)-0.01).toFixed(2)}" step="0.01" value="0" oninput="updatePendingItemTotal()"><small>Preço original: ${money(p.price)} • Valor final: <b id="pendingItemFinal">${money(p.price)}</b></small></div><div class="row"><button onclick="confirmAddPendingProduct()">Lançar na sacolinha</button><button class="secondary" onclick="cancelPendingProduct()">Cancelar</button></div></div>`;
+}
+function updatePendingItemTotal(){
+  const p=pendingProductToAdd,input=el('pendingItemDiscount');if(!p||!input)return;
+  const discount=parseMoneyInput(input.value||'0');
+  const final=Math.max(0,Number(p.price||0)-(Number.isFinite(discount)?discount:0));
+  el('pendingItemFinal').textContent=money(final);
+}
+function cancelPendingProduct(){pendingProductToAdd=null;renderPendingProduct();el('scan')?.focus();}
 async function addToBag(product){
   const cid=el('liveClient').value;if(!cid)return alert('Selecione uma cliente primeiro.');
   if(product.status!=='Disponível')return alert('Esta peça não está disponível.');
+  if(pendingProductToAdd)return alert('Conclua ou cancele o lançamento da peça que já foi lida.');
+  pendingProductToAdd=product;renderPendingProduct();
+}
+async function confirmAddPendingProduct(){
+  const cid=el('liveClient').value,p=pendingProductToAdd,input=el('pendingItemDiscount');
+  if(!cid)return alert('Selecione uma cliente primeiro.');
+  if(!p)return;
+  const discount=parseMoneyInput(input?.value||'0');
+  if(!Number.isFinite(discount)||discount<0||discount>=Number(p.price))return alert('O desconto deve ser igual ou maior que zero e menor que o preço original.');
   try{
-    const {error}=await sb.rpc('admin_add_item_to_bag',{p_customer_id:cid,p_product_id:product.id});
+    const {error}=await sb.rpc('admin_add_item_to_bag',{p_customer_id:cid,p_product_id:p.id,p_item_discount:discount});
     if(error)throw error;
-    await loadCloud();el('scan').focus();
+    pendingProductToAdd=null;renderPendingProduct();await loadCloud();el('scan').focus();
   }catch(err){reportError(err,'Não foi possível reservar esta peça.');}
 }
 async function openCameraScan(target){
@@ -448,6 +471,7 @@ async function closeCameraScan(){
 let physicalScanInProgress=false;
 async function scanProduct(){
   if(physicalScanInProgress)return;
+  if(pendingProductToAdd)return alert('Finalize ou cancele o lançamento da peça que já foi lida antes de bipar outra.');
   const field=el('scan'),code=field.value.trim();field.value='';
   if(!code){field.focus();return;}
   const product=db.products.find(p=>p.barcode===code);
@@ -669,7 +693,18 @@ function renderResults(){
 }
 
 function renderProducts(){
-  el('productList').innerHTML=db.products.map(p=>`<div class="statline"><span><b>${esc(p.desc)}</b> <small>• ${esc(p.short)} • ${esc(p.barcode)}</small><br><small>${esc(typeLabel(p.type))} • ${esc(p.supplier||'Sem fornecedora')} • Custo ${money(p.cost)}</small><br><b>${money(p.price)}</b> <span class="pill">${esc(p.status)}</span></span><div class="row"><button class="secondary" onclick="label('${esc(p.id)}')">Etiqueta</button>${p.status==='Disponível'?'<button class="danger" onclick="deleteProduct(\''+p.id+'\')">Excluir</button>':''}</div></div>`).join('')||'<div class="empty">Nenhum produto cadastrado.</div>';
+  el('productList').innerHTML=db.products.map(p=>`<div class="statline"><span><b>${esc(p.desc)}</b> <small>• ${esc(p.short)} • ${esc(p.barcode)}</small><br><small>${esc(typeLabel(p.type))} • ${esc(p.supplier||'Sem fornecedora')} • Custo ${money(p.cost)}</small><br><b>${money(p.price)}</b> <span class="pill">${esc(p.status)}</span></span><div class="row"><button class="secondary" onclick="editProduct('${esc(p.id)}')">Editar</button><button class="secondary" onclick="label('${esc(p.id)}')">Etiqueta</button>${p.status==='Disponível'?'<button class="danger" onclick="deleteProduct(\\''+p.id+'\\')">Excluir</button>':''}</div></div>`).join('')||'<div class="empty">Nenhum produto cadastrado.</div>';
+}
+async function editProduct(productId){
+  const product=db.products.find(p=>p.id===productId);if(!product)return alert('Produto não encontrado.');
+  const description=prompt('Descrição do produto:',product.desc||'');if(description===null)return;
+  if(!description.trim())return alert('A descrição não pode ficar vazia.');
+  const size=prompt('Tamanho:',product.size||'');if(size===null)return;
+  const priceText=prompt('Valor de venda (R$):',Number(product.price||0).toFixed(2).replace('.',','));if(priceText===null)return;
+  const price=parseMoneyInput(priceText);if(!Number.isFinite(price)||price<=0)return alert('Informe um valor de venda válido.');
+  const {error}=await sb.from('products').update({description:description.trim(),size:size.trim()||null,sale_price:price}).eq('id',productId);
+  if(error)return reportError(error,'Não foi possível editar o produto.');
+  await loadCloud();alert('Produto atualizado. Os dados já lançados em sacolinhas e vendas anteriores foram preservados.');
 }
 async function deleteProduct(productId){
   const product=db.products.find(p=>p.id===productId);
@@ -717,7 +752,7 @@ function renderCart(){
   const cid=el('liveClient').value;if(!cid){el('cart').innerHTML='<div class="empty">Selecione uma cliente para visualizar a sacolinha.</div>';return;}
   const items=db.bags[cid]||[],meta=db.bagMeta[cid];let subtotal=0;
   const clearButton=items.length?'<button class="danger" style="margin:8px 0" onclick="clearOpenBag(\''+cid+'\')">Esvaziar sacolinha</button>':'';
-  const rows=clearButton+items.map(item=>{subtotal+=Number(item.price||0);return `<div class="statline"><span>${esc(item.description)}<br><small>${esc(item.size)} • ${money(item.price)}</small></span><button class="danger" onclick="removeBagItem('${cid}','${item.id}')">Remover</button></div>`;}).join('');
+  const rows=clearButton+items.map(item=>{subtotal+=Number(item.price||0);const detail=item.itemDiscount>0?`<small>${esc(item.size)} • <s>${money(item.originalPrice)}</s> • Desconto ${money(item.itemDiscount)} • <b>${money(item.price)}</b></small>`:`<small>${esc(item.size)} • ${money(item.price)}</small>`;return `<div class="statline"><span>${esc(item.description)}<br>${detail}</span><button class="danger" onclick="removeBagItem('${cid}','${item.id}')">Remover</button></div>`;}).join('');
   const discount=Number(meta?.discount||0),total=Math.max(0,subtotal-discount),first=meta?.firstPayment;
   const paidCredit=first?.status==='paid'?Number(first.base_amount||0):0;
   const balance=Math.max(0,total-paidCredit-Number(meta?.balancePaid||0)),balancePayment=meta?.balancePayment;
