@@ -230,7 +230,7 @@ async function loadCloud(){
     db.bags[bag.customer_id]=[];
     const firstPayment=db.payments.find(x=>x.bag_id===bag.id&&x.purpose==='first_item'&&!x.superseded_at)||null;
     const balancePayments=db.payments.filter(x=>x.bag_id===bag.id&&x.purpose==='bag_balance'&&x.status==='paid'&&!x.superseded_at);
-    const supersededPayments=db.payments.filter(x=>x.bag_id===bag.id&&x.purpose==='bag_balance'&&x.superseded_at);
+    const supersededPayments=db.payments.filter(x=>x.bag_id===bag.id&&['first_item','bag_balance'].includes(x.purpose)&&x.superseded_at);
     const lateSupersededPayments=supersededPayments.filter(x=>x.status==='paid');
     const balancePaid=balancePayments.reduce((sum,x)=>sum+Number(x.base_amount||0),0);
     const balancePayment=db.payments.find(x=>x.bag_id===bag.id&&x.purpose==='bag_balance'&&x.status==='pending'&&!x.superseded_at)||null;
