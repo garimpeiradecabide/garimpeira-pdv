@@ -554,7 +554,7 @@ async function generateCustomerAccess(customerId){
   const {data,error}=await sb.functions.invoke('admin-create-customer-login',{body:{customer_id:customerId}});
   if(error)return reportError(error,'Não foi possível gerar o acesso da cliente.');
   if(data?.error)return alert(data.error);
-  if(!/^\\d{6}$/.test(String(data?.password||'')))return alert('O acesso foi atualizado, mas o sistema não retornou o código provisório esperado. Não envie nenhum código; gere um novo acesso ou avise o suporte.');
+  if(!/^\d{6}$/.test(String(data?.password||'')))return alert('O acesso foi atualizado, mas o sistema não retornou o código provisório esperado. Não envie nenhum código; gere um novo acesso ou avise o suporte.');
   pendingCustomerAccess[customerId]=String(data.password);
   await loadCloud();
   alert('Acesso provisório gerado para '+customer.name+'. Agora use o botão “Enviar acesso pelo WhatsApp”. O código fica disponível nesta tela até você sair ou atualizar a página.');
@@ -563,10 +563,10 @@ function sendCustomerAccessWhatsApp(customerId){
   const customer=db.clients.find(x=>x.id===customerId);
   const password=pendingCustomerAccess[customerId];
   if(!customer||!password)return alert('Gere um novo acesso provisório antes de enviar.');
-  let phone=String(customer.phone||'').replace(/\\D/g,'');
+  let phone=String(customer.phone||'').replace(/\D/g,'');
   if(phone.startsWith('55')&&(phone.length===12||phone.length===13))phone=phone.slice(2);
   if(phone.length!==10&&phone.length!==11)return alert('Confira o celular/WhatsApp cadastrado desta cliente.');
-  const message='Olá, '+customer.name+'! 🤍\\n\\nSeu acesso à sua sacolinha da Garimpeira de Cabide está pronto!\\n\\n🌐 Portal: https://garimpeiradecabide.github.io/garimpeira-pdv/portal.html\\n📱 Login: seu número de celular cadastrado ('+customer.phone+')\\n🔐 Senha provisória: '+password+'\\n\\nCopie somente os seis números da senha provisória, entre no portal e, depois do primeiro acesso, altere sua senha na área “Segurança da conta” por uma senha pessoal escolhida por você. Guarde essa nova senha em local seguro. 🤍';
+  const message='Olá, '+customer.name+'! 🤍\n\nSeu acesso à sua sacolinha da Garimpeira de Cabide está pronto!\n\n🌐 Portal: https://garimpeiradecabide.github.io/garimpeira-pdv/portal.html\n📱 Login: seu número de celular cadastrado ('+customer.phone+')\n🔐 Senha provisória: '+password+'\n\nCopie somente os seis números da senha provisória, entre no portal e, depois do primeiro acesso, altere sua senha na área “Segurança da conta” por uma senha pessoal escolhida por você. Guarde essa nova senha em local seguro. 🤍';
   const url='https://wa.me/55'+phone+'?text='+encodeURIComponent(message);
   window.open(url,'_blank','noopener');
 }
@@ -844,7 +844,7 @@ async function createFirstItemCheckout(customerId){
   if(!fresh?.checkout_url){if(wa)wa.close();return alert('O link foi criado, mas não apareceu no painel. Atualize e confira a cobrança antes de enviar.');}
   const message=firstPaymentMessage(customer,fresh);
   if(wa)wa.location.href='https://wa.me/'+normalizeWhatsapp(customer.phone)+'?text='+encodeURIComponent(message);
-  else alert('Cobrança criada. Link: '+fresh.checkout_url+'\\nAbra o WhatsApp da cliente e envie manualmente.');
+  else alert('Cobrança criada. Link: '+fresh.checkout_url+'\nAbra o WhatsApp da cliente e envie manualmente.');
 }
 function parseMoneyInput(value){const s=String(value).trim().replaceAll(' ','');return Number(s.includes(',')?s.split('.').join('').replace(',','.'):s);}
 async function setBagDiscount(customerId){
