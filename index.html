@@ -568,7 +568,8 @@ function sendCustomerAccessWhatsApp(customerId){
   let phone=String(customer.phone||'').replace(/\D/g,'');
   if(phone.startsWith('55')&&(phone.length===12||phone.length===13))phone=phone.slice(2);
   if(phone.length!==10&&phone.length!==11)return alert('Confira o celular/WhatsApp cadastrado desta cliente.');
-  const message='Oi '+customer.name+'🤍\n\n*Seu acesso à sua sacolinha da Garimpeira de Cabide está pronto!*\n\n🌐 *PORTAL:* https://garimpeiradecabide.github.io/garimpeira-pdv/portal.html\n\n📱 *LOGIN:* seu número de celular cadastrado ('+customer.phone+')\n\n🔐 *SENHA PROVISÓRIA:* '+password+'\n\nCopie somente os seis números da senha provisória, entre no portal e, depois do primeiro acesso, altere sua senha na área *“Segurança da conta”* por uma senha pessoal escolhida por você. Guarde essa nova senha em local seguro. 🤍';
+  const firstName=String(customer.name||'').trim().split(/\s+/)[0]||'';
+  const message='Oi '+firstName+'🤍\n\n*Seu acesso à sua sacolinha da Garimpeira de Cabide está pronto!*\n\n🌐 *PORTAL:* https://garimpeiradecabide.github.io/garimpeira-pdv/portal.html\n\n📱 *LOGIN:* seu número de celular cadastrado ('+customer.phone+')\n\n🔐 *SENHA PROVISÓRIA:* '+password+'\n\nCopie somente os seis números da senha provisória, entre no portal e, depois do primeiro acesso, altere sua senha na área *“Segurança da conta”* por uma senha pessoal escolhida por você. Guarde essa nova senha em local seguro. 🤍';
   const url='https://wa.me/55'+phone+'?text='+encodeURIComponent(message);
   window.open(url,'_blank','noopener');
 }
