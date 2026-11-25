@@ -481,7 +481,6 @@ async function selectLiveProduct(productId){
 async function removeBagItem(customerId,itemId){
   const meta=db.bagMeta[customerId],items=db.bags[customerId]||[];
   if(meta?.firstPayment?.status==='paid'&&items[0]?.id===itemId)return alert('A primeira peça já foi paga e não pode ser removida por esta ação.');
-  if(meta?.lateSupersededPayments?.length)return alert('Um link antigo foi pago depois de substituído. Confira esse recebimento antes de fazer novas alterações na sacolinha.');
   const hasPendingCheckout=meta?.firstPayment?.status==='pending'||meta?.balancePayment?.status==='pending';
   if(!confirm('Remover esta peça da sacolinha e devolver ao estoque? O saldo será recalculado. '+(hasPendingCheckout?'A cobrança pendente será substituída. O checkout antigo será expirado quando o Mercado Pago permitir.':'')))return;
   try{
