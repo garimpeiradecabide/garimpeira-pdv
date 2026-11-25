@@ -606,6 +606,7 @@ async function copyCustomerAccessPassword(customerId){
 }
 async function setCustomerEmail(customerId){const customer=db.clients.find(x=>x.id===customerId);if(!customer)return;const email=prompt('E-mail que a cliente usará para criar o acesso ao portal:',customer.email||'');if(email===null)return;const normalized=email.trim().toLowerCase();if(normalized&&(!normalized.includes('@')||!normalized.split('@')[1]?.includes('.')))return alert('Informe um e-mail válido.');const {error}=await sb.from('customers').update({email:normalized||null}).eq('id',customerId);if(error)return reportError(error,'Não foi possível atualizar o e-mail.');await loadCloud();alert('E-mail do portal atualizado. Oriente a cliente a criar o acesso em portal.html.');}
 let selectedSupplierId=null;
+let supplierPieceFilter='all';
 function dateBR(value){
   if(!value)return '—';
   const d=new Date(String(value).length===10?value+'T12:00:00':value);
@@ -613,11 +614,7 @@ function dateBR(value){
 }
 function renderSuppliers(){
   const rows=db.suppliers.map(s=>{
-    const sold=db.sales.flatMap(sale=>sale.items.filter(item=>item.supplierId===s.id&&item.acquisitionType==='consignment').map(item=>({...item,saleDate:sale.closedAt||sale.createdAt})));
-    const due=sold.reduce((sum,item)=>sum+Number(item.cost||0),0);
-    const paid=db.supplierPayments.filter(row=>row.supplier_id===s.id).reduce((sum,row)=>sum+Number(row.amount||0),0);
-    const pending=Math.max(0,due-paid);
-    return '<div class="statline" style="align-items:center"><b>'+esc(s.name)+'</b><div class="row"><button type="button" class="secondary" data-open-supplier="'+esc(s.id)+'">Ver acerto e peças</button><button type="button" class="secondary" onclick="editSupplier(\''+s.id+'\')">Editar nome</button>'+(s.active?'<button type="button" class="secondary" onclick="deleteSupplier(\''+s.id+'\')">Excluir</button>':'<button type="button" class="secondary" onclick="toggleSupplierActive(\''+s.id+'\')">Reativar</button>')+'</div></div>';
+    return '<div class="statline" style="align-items:center"><b>'+esc(s.name)+'</b><div class="row"><button type="button" class="secondary" data-open-supplier="'+esc(s.id)+'">Ver acerto e peças</button><button type="button" class="secondary" onclick="editSupplier(&quot;'+esc(s.id)+'&quot;)">Editar nome</button>'+(s.active?'<button type="button" class="secondary" onclick="deleteSupplier(&quot;'+esc(s.id)+'&quot;)">Excluir</button>':'<button type="button" class="secondary" onclick="toggleSupplierActive(&quot;'+esc(s.id)+'&quot;)">Reativar</button>')+'</div></div>';
   }).join('');
   const supplier=db.suppliers.find(row=>row.id===selectedSupplierId);
   let detail='';
@@ -629,11 +626,13 @@ function renderSuppliers(){
     const pending=Math.max(0,due-paid);
     const available=db.products.filter(p=>p.supplierId===supplier.id&&p.type==='consignment'&&p.status==='Disponível');
     const returns=db.supplierProductReturns.filter(row=>row.supplier_id===supplier.id).sort((a,b)=>new Date(b.returned_at)-new Date(a.returned_at));
-    detail='<div class="card" style="margin-top:18px;border:1px solid var(--line)"><h3>Acerto — '+esc(supplier.name)+'</h3><div class="formgrid"><div class="statline"><span>Total a repassar</span><b>'+money(due)+'</b></div><div class="statline"><span>Já pago</span><b>'+money(paid)+'</b></div><div class="statline"><span>Saldo pendente</span><b>'+money(pending)+'</b></div></div><div class="row" style="margin:12px 0"><button onclick="registerSupplierPayment(\''+supplier.id+'\')" '+(pending<=0?'disabled':'')+'>Registrar pagamento</button><button class="secondary" onclick="selectedSupplierId=null;renderSuppliers()">Fechar ficha</button></div>';
-    detail+='<h4>Peças vendidas em consignação</h4>';
-    detail+=sold.length?sold.map(item=>'<div class="statline"><span><b>'+esc(item.description||'Peça')+'</b><br><small>Data da venda: '+dateBR(item.saleDate)+'</small></span><b>Repasse: '+money(item.cost)+'</b></div>').join(''):'<div class="empty">Nenhuma peça consignada vendida.</div>';
-    detail+='<h4 style="margin-top:22px">Peças disponíveis para devolução</h4>';
-    detail+=available.length?available.map(p=>'<div class="statline"><span><b>'+esc(p.desc||'Peça')+'</b></span><button class="secondary" onclick="registerSupplierProductReturn(\''+p.id+'\')">Registrar devolução</button></div>').join(''):'<div class="empty">Não há peças disponíveis desta fornecedora para devolver.</div>';
+    const soldHtml=sold.length?sold.map(item=>'<div class="statline"><span><b>'+esc(item.description||'Peça')+'</b><br><small>Data da venda: '+dateBR(item.saleDate)+'</small></span><b>Repasse: '+money(item.cost)+'</b></div>').join(''):'<div class="empty">Nenhuma peça consignada vendida.</div>';
+    const availableHtml=available.length?available.map(p=>'<div class="statline"><span><b>'+esc(p.desc||'Peça')+'</b></span><button class="secondary" data-return-product="'+esc(p.id)+'">Registrar devolução</button></div>').join(''):'<div class="empty">Não há peças disponíveis desta fornecedora para devolver.</div>';
+    const filters='<div class="row" style="margin:10px 0 14px"><button type="button" class="'+(supplierPieceFilter==='all'?'':'secondary')+'" data-piece-filter="all">Todas ('+(sold.length+available.length)+')</button><button type="button" class="'+(supplierPieceFilter==='sold'?'':'secondary')+'" data-piece-filter="sold">Vendidas ('+sold.length+')</button><button type="button" class="'+(supplierPieceFilter==='available'?'':'secondary')+'" data-piece-filter="available">Disponíveis ('+available.length+')</button></div>';
+    let pieces=filters;
+    if(supplierPieceFilter==='all'||supplierPieceFilter==='sold')pieces+='<h4>Peças vendidas em consignação ('+sold.length+')</h4>'+soldHtml;
+    if(supplierPieceFilter==='all'||supplierPieceFilter==='available')pieces+='<h4 style="margin-top:22px">Peças disponíveis para devolução ('+available.length+')</h4>'+availableHtml;
+    detail='<div class="card" style="margin-top:18px;border:1px solid var(--line)"><h3>Acerto — '+esc(supplier.name)+'</h3><div class="formgrid"><div class="statline"><span>Total a repassar</span><b>'+money(due)+'</b></div><div class="statline"><span>Já pago</span><b>'+money(paid)+'</b></div><div class="statline"><span>Saldo pendente</span><b>'+money(pending)+'</b></div></div><div class="row" style="margin:12px 0"><button onclick="registerSupplierPayment(&quot;'+esc(supplier.id)+'&quot;)" '+(pending<=0?'disabled':'')+'>Registrar pagamento</button><button class="secondary" onclick="selectedSupplierId=null;renderSuppliers()">Fechar ficha</button></div>'+pieces;
     detail+='<h4 style="margin-top:22px">Histórico de pagamentos</h4>';
     detail+=payments.length?payments.map(row=>'<div class="statline"><span><b>'+money(row.amount)+'</b><br><small>'+dateBR(row.paid_at)+' • '+esc(row.description||'Pagamento registrado')+'</small></span><span class="pill">Pago</span></div>').join(''):'<div class="empty">Nenhum pagamento registrado.</div>';
     detail+='<h4 style="margin-top:22px">Histórico de devoluções</h4>';
@@ -641,9 +640,14 @@ function renderSuppliers(){
     detail+='</div>';
   }
   el('supplierList').innerHTML=(rows||'<div class="empty">Nenhuma fornecedora cadastrada.</div>')+detail;
-  el('supplierList').querySelectorAll('[data-open-supplier]').forEach(button=>{
-    button.addEventListener('click',()=>openSupplierDetails(button.dataset.openSupplier));
-  });
+  el('supplierList').querySelectorAll('[data-open-supplier]').forEach(button=>button.addEventListener('click',()=>openSupplierDetails(button.dataset.openSupplier)));
+  el('supplierList').querySelectorAll('[data-piece-filter]').forEach(button=>button.addEventListener('click',()=>setSupplierPieceFilter(button.dataset.pieceFilter)));
+  el('supplierList').querySelectorAll('[data-return-product]').forEach(button=>button.addEventListener('click',()=>registerSupplierProductReturn(button.dataset.returnProduct)));
+}
+function setSupplierPieceFilter(filter){
+  if(!['all','sold','available'].includes(filter))return;
+  supplierPieceFilter=filter;
+  renderSuppliers();
 }
 function openSupplierDetails(id){
   selectedSupplierId=String(id);
