@@ -147,6 +147,8 @@ const SUPABASE_KEY = 'sb_publishable_haoKT8vSzAEpxwfsapBM1A_4REUsg8T';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let db = {clients:[], suppliers:[], products:[], supplierLots:[], supplierLotReturns:[], bags:{}, bagMeta:{}, closeRequests:{}, paymentSettings:null, payments:[], sales:[], deliveries:[], liveSessions:[], supplierPayments:[], legacyEvents:[]};
 let currentUser = null;
+// Senhas provisórias ficam apenas na memória desta tela administrativa; nunca são gravadas no banco.
+const pendingCustomerAccess = Object.create(null);
 let cameraScanner = null;
 let cameraTarget = null;
 const el = id => document.getElementById(id);
@@ -529,7 +531,7 @@ function render(){
 function renderClients(){
   const q=(el('clientSearch').value||'').toLowerCase();
   el('clientList').innerHTML=db.clients.filter(c=>(c.name+' '+c.phone).toLowerCase().includes(q))
-    .map(c=>`<div class="statline"><span><b>${esc(c.name)}</b><br><small>${esc(c.phone)} • ${c.authUserId?'Acesso ativo':'Sem acesso ao portal'}</small></span><div class="row"><button class="secondary" onclick="editClientName('${c.id}')">Editar nome</button><button class="secondary" onclick="generateCustomerAccess('${c.id}')">${c.authUserId?'Gerar nova senha':'Gerar acesso'}</button></div></div>`).join('')||'<div class="empty">Nenhuma cliente cadastrada.</div>';
+    .map(c=>`<div class="statline"><span><b>${esc(c.name)}</b><br><small>${esc(c.phone)} • ${c.authUserId?'Acesso ativo':'Sem acesso ao portal'}</small></span><div class="row"><button class="secondary" onclick="editClientName('${c.id}')">Editar nome</button><button class="secondary" onclick="generateCustomerAccess('${c.id}')">${c.authUserId?'Gerar novo acesso':'Gerar acesso'}</button>${pendingCustomerAccess[c.id]?'<button onclick="sendCustomerAccessWhatsApp(\''+c.id+'\')">Enviar acesso pelo WhatsApp</button><button class="secondary" onclick="copyCustomerAccessPassword(\''+c.id+'\')">Copiar somente a senha</button>':''}</div></div>`).join('')||'<div class="empty">Nenhuma cliente cadastrada.</div>';
 }
 async function editClientName(customerId){
   const customer=db.clients.find(c=>c.id===customerId);
@@ -547,14 +549,32 @@ async function editClientName(customerId){
 async function generateCustomerAccess(customerId){
   const customer=db.clients.find(x=>x.id===customerId);if(!customer)return;
   if(!customer.phone)return alert('Cadastre o celular da cliente primeiro.');
-  const action=customer.authUserId?'Gerar uma nova senha':'Criar acesso';
-  if(!confirm(action+' para '+customer.name+' usando o celular '+customer.phone+'?'))return;
+  const action=customer.authUserId?'Gerar um novo acesso provisório':'Criar acesso';
+  if(!confirm(action+' para '+customer.name+' usando o celular '+customer.phone+'? A senha provisória anterior deixará de funcionar.'))return;
   const {data,error}=await sb.functions.invoke('admin-create-customer-login',{body:{customer_id:customerId}});
   if(error)return reportError(error,'Não foi possível gerar o acesso da cliente.');
   if(data?.error)return alert(data.error);
-  alert('A senha de '+customer.name+' foi gerada. Celular de acesso: '+customer.phone+'. Na próxima janela, copie somente a senha exibida.');
-  prompt('COPIE SOMENTE ESTA SENHA para o campo Senha do portal. Não copie o celular nem outras informações:',data.password);
+  if(!/^\\d{6}$/.test(String(data?.password||'')))return alert('O acesso foi atualizado, mas o sistema não retornou o código provisório esperado. Não envie nenhum código; gere um novo acesso ou avise o suporte.');
+  pendingCustomerAccess[customerId]=String(data.password);
   await loadCloud();
+  alert('Acesso provisório gerado para '+customer.name+'. Agora use o botão “Enviar acesso pelo WhatsApp”. O código fica disponível nesta tela até você sair ou atualizar a página.');
+}
+function sendCustomerAccessWhatsApp(customerId){
+  const customer=db.clients.find(x=>x.id===customerId);
+  const password=pendingCustomerAccess[customerId];
+  if(!customer||!password)return alert('Gere um novo acesso provisório antes de enviar.');
+  let phone=String(customer.phone||'').replace(/\\D/g,'');
+  if(phone.startsWith('55')&&(phone.length===12||phone.length===13))phone=phone.slice(2);
+  if(phone.length!==10&&phone.length!==11)return alert('Confira o celular/WhatsApp cadastrado desta cliente.');
+  const message='Olá, '+customer.name+'! 🤍\\n\\nSeu acesso à sua sacolinha da Garimpeira de Cabide está pronto!\\n\\n🌐 Portal: https://garimpeiradecabide.github.io/garimpeira-pdv/portal.html\\n📱 Login: seu número de celular cadastrado ('+customer.phone+')\\n🔐 Senha provisória: '+password+'\\n\\nCopie somente os seis números da senha provisória, entre no portal e, depois do primeiro acesso, altere sua senha na área “Segurança da conta” por uma senha pessoal escolhida por você. Guarde essa nova senha em local seguro. 🤍';
+  const url='https://wa.me/55'+phone+'?text='+encodeURIComponent(message);
+  window.open(url,'_blank','noopener');
+}
+async function copyCustomerAccessPassword(customerId){
+  const password=pendingCustomerAccess[customerId];
+  if(!password)return alert('Gere um novo acesso provisório antes de copiar.');
+  try{await navigator.clipboard.writeText(password);alert('Somente a senha provisória foi copiada: '+password);}
+  catch(error){prompt('Copie somente os seis números desta senha:',password);}
 }
 async function setCustomerEmail(customerId){const customer=db.clients.find(x=>x.id===customerId);if(!customer)return;const email=prompt('E-mail que a cliente usará para criar o acesso ao portal:',customer.email||'');if(email===null)return;const normalized=email.trim().toLowerCase();if(normalized&&(!normalized.includes('@')||!normalized.split('@')[1]?.includes('.')))return alert('Informe um e-mail válido.');const {error}=await sb.from('customers').update({email:normalized||null}).eq('id',customerId);if(error)return reportError(error,'Não foi possível atualizar o e-mail.');await loadCloud();alert('E-mail do portal atualizado. Oriente a cliente a criar o acesso em portal.html.');}
 function renderSuppliers(){
