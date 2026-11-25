@@ -617,7 +617,7 @@ function renderSuppliers(){
     const due=sold.reduce((sum,item)=>sum+Number(item.cost||0),0);
     const paid=db.supplierPayments.filter(row=>row.supplier_id===s.id).reduce((sum,row)=>sum+Number(row.amount||0),0);
     const pending=Math.max(0,due-paid);
-    return '<div class="statline" style="align-items:center"><b>'+esc(s.name)+'</b><div class="row"><button type="button" class="secondary" data-open-supplier="'+esc(s.id)+'">Ver acerto e peças</button><button type="button" class="secondary" onclick="editSupplier(\\''+s.id+'\\')">Editar nome</button>'+(s.active?'<button type="button" class="secondary" onclick="deleteSupplier(\\''+s.id+'\\')">Excluir</button>':'<button type="button" class="secondary" onclick="toggleSupplierActive(\\''+s.id+'\\')">Reativar</button>')+'</div></div>';
+    return '<div class="statline" style="align-items:center"><b>'+esc(s.name)+'</b><div class="row"><button type="button" class="secondary" data-open-supplier="'+esc(s.id)+'">Ver acerto e peças</button><button type="button" class="secondary" onclick="editSupplier(\''+s.id+'\')">Editar nome</button>'+(s.active?'<button type="button" class="secondary" onclick="deleteSupplier(\''+s.id+'\')">Excluir</button>':'<button type="button" class="secondary" onclick="toggleSupplierActive(\''+s.id+'\')">Reativar</button>')+'</div></div>';
   }).join('');
   const supplier=db.suppliers.find(row=>row.id===selectedSupplierId);
   let detail='';
