@@ -145,7 +145,7 @@ table{width:100%;border-collapse:collapse;margin-top:12px;background:white}th,td
 const SUPABASE_URL = 'https://gcyuvbakxswkjcyqscth.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_haoKT8vSzAEpxwfsapBM1A_4REUsg8T';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-let db = {clients:[], suppliers:[], products:[], supplierLots:[], supplierLotReturns:[], bags:{}, bagMeta:{}, closeRequests:{}, paymentSettings:null, payments:[], sales:[], deliveries:[], liveSessions:[], supplierPayments:[], legacyEvents:[]};
+let db = {clients:[], suppliers:[], products:[], supplierLots:[], supplierLotReturns:[], bags:{}, bagMeta:{}, closeRequests:{}, paymentSettings:null, payments:[], sales:[], deliveries:[], liveSessions:[], supplierPayments:[], supplierProductReturns:[], legacyEvents:[]};
 let currentUser = null;
 // Senhas provisórias ficam apenas na memória desta tela administrativa; nunca são gravadas no banco.
 const pendingCustomerAccess = Object.create(null);
@@ -191,7 +191,7 @@ el('loginForm').addEventListener('submit',async e=>{
   catch(err){console.error(err);el('loginMessage').textContent='Não foi possível entrar: '+(err.message||'verifique e-mail e senha');}
 });
 async function loadCloud(){
-  const [c,s,p,b,bi,cr,ps,pay,closedBags,soldItems,deliveryRows,liveSessions,supplierPayments,lots,lotReturns]=await Promise.all([
+  const [c,s,p,b,bi,cr,ps,pay,closedBags,soldItems,deliveryRows,liveSessions,supplierPayments,lots,lotReturns,productReturns]=await Promise.all([
     sb.from('customers').select('*').order('created_at',{ascending:false}),
     sb.from('suppliers').select('*').order('name'),
     sb.from('products').select('*').order('created_at',{ascending:false}),
@@ -206,12 +206,13 @@ async function loadCloud(){
     sb.from('live_sessions').select('*').order('started_at',{ascending:false}),
     sb.from('supplier_payments').select('*').order('paid_at',{ascending:false}),
     sb.from('supplier_lots').select('*').order('entered_at',{ascending:false}),
-    sb.from('supplier_lot_returns').select('*').order('returned_at',{ascending:false})
+    sb.from('supplier_lot_returns').select('*').order('returned_at',{ascending:false}),
+    sb.from('supplier_product_returns').select('*').order('returned_at',{ascending:false})
   ]);
-  for(const r of [c,s,p,b,bi,cr,ps,pay,closedBags,soldItems,deliveryRows,liveSessions,supplierPayments,lots,lotReturns]) if(r.error) throw r.error;
+  for(const r of [c,s,p,b,bi,cr,ps,pay,closedBags,soldItems,deliveryRows,liveSessions,supplierPayments,lots,lotReturns,productReturns]) if(r.error) throw r.error;
   db.clients=c.data.map(x=>({id:x.id,name:x.name,phone:x.phone||'',email:x.email||'',authUserId:x.auth_user_id||null,obs:x.notes||''}));
   db.liveSessions=liveSessions.data||[];db.supplierPayments=supplierPayments.data||[];
-  db.supplierLots=lots.data||[];db.supplierLotReturns=lotReturns.data||[];
+  db.supplierLots=lots.data||[];db.supplierLotReturns=lotReturns.data||[];db.supplierProductReturns=productReturns.data||[];
   db.suppliers=s.data.map(x=>({id:x.id,name:x.name,phone:x.phone||'',rule:x.settlement_rule||'',notes:x.notes||'',active:x.active!==false}));
   db.products=p.data.map(x=>({id:x.id,desc:x.description,short:x.short_code||'',size:x.size||'',cost:Number(x.cost||0),price:Number(x.sale_price||0),supplierId:x.supplier_id,supplierLotId:x.supplier_lot_id||null,supplier:(s.data.find(y=>y.id===x.supplier_id)||{}).name||'',type:x.acquisition_type,barcode:x.barcode||'',status:x.status==='available'?'Disponível':x.status==='reserved'?'Reservada':x.status==='sold'?'Vendida':'Baixada'}));
   db.bags={};db.bagMeta={};db.closeRequests={};db.paymentSettings=ps.data;db.payments=pay.data||[];
@@ -222,7 +223,7 @@ async function loadCloud(){
     discount:Number(bag.discount_amount||0),items:allSoldItems.filter(item=>item.bag_id===bag.id).map(item=>{
        const product=p.data.find(row=>row.id===item.product_id)||{};
        const supplierId=item.supplier_id_snapshot||product.supplier_id||null;
-       return {id:item.id,productId:item.product_id,description:item.description_snapshot||'Peça',size:item.size_snapshot||'',price:Number(item.price_snapshot||0),cost:Number(item.cost_snapshot??product.cost??0),supplierId,supplier:(s.data.find(row=>row.id===supplierId)||{}).name||'',acquisitionType:item.acquisition_type_snapshot||product.acquisition_type||'purchase',liveSessionId:item.live_session_id||null,status:item.status};
+       return {id:item.id,productId:item.product_id,description:item.description_snapshot||'Peça',size:item.size_snapshot||'',price:Number(item.price_snapshot||0),cost:Number(item.cost_snapshot??product.cost??0),supplierId,supplier:(s.data.find(row=>row.id===supplierId)||{}).name||'',acquisitionType:item.acquisition_type_snapshot||product.acquisition_type||'purchase',liveSessionId:item.live_session_id||null,status:item.status,soldAt:bag.closed_at||bag.created_at};
      })
   })).filter(sale=>sale.items.length>0);
   db.deliveries=(deliveryRows.data||[]).map(row=>({...row,customerId:(closedBags.data||[]).find(bag=>bag.id===row.bag_id)?.customer_id||null}));
@@ -604,8 +605,54 @@ async function copyCustomerAccessPassword(customerId){
   catch(error){prompt('Copie somente os seis números desta senha:',password);}
 }
 async function setCustomerEmail(customerId){const customer=db.clients.find(x=>x.id===customerId);if(!customer)return;const email=prompt('E-mail que a cliente usará para criar o acesso ao portal:',customer.email||'');if(email===null)return;const normalized=email.trim().toLowerCase();if(normalized&&(!normalized.includes('@')||!normalized.split('@')[1]?.includes('.')))return alert('Informe um e-mail válido.');const {error}=await sb.from('customers').update({email:normalized||null}).eq('id',customerId);if(error)return reportError(error,'Não foi possível atualizar o e-mail.');await loadCloud();alert('E-mail do portal atualizado. Oriente a cliente a criar o acesso em portal.html.');}
+let selectedSupplierId=null;
+function dateBR(value){
+  if(!value)return '—';
+  const d=new Date(String(value).length===10?value+'T12:00:00':value);
+  return Number.isNaN(d.getTime())?'—':d.toLocaleDateString('pt-BR');
+}
 function renderSuppliers(){
-  el('supplierList').innerHTML=db.suppliers.map(s=>'<div class="statline"><b>'+esc(s.name)+'</b><div class="row"><button class="secondary" onclick="editSupplier(\''+s.id+'\')">Editar nome</button>'+(s.active?'<button class="secondary" onclick="deleteSupplier(\''+s.id+'\')">Excluir</button>':'<button class="secondary" onclick="toggleSupplierActive(\''+s.id+'\')">Reativar</button>')+'</div></div>').join('')||'<div class="empty">Nenhuma fornecedora cadastrada.</div>';
+  const rows=db.suppliers.map(s=>{
+    const sold=db.sales.flatMap(sale=>sale.items.filter(item=>item.supplierId===s.id&&item.acquisitionType==='consignment').map(item=>({...item,saleDate:sale.closedAt||sale.createdAt})));
+    const due=sold.reduce((sum,item)=>sum+Number(item.cost||0),0);
+    const paid=db.supplierPayments.filter(row=>row.supplier_id===s.id).reduce((sum,row)=>sum+Number(row.amount||0),0);
+    const pending=Math.max(0,due-paid);
+    return '<div class="statline" style="align-items:center"><b>'+esc(s.name)+'</b><div class="row"><button class="secondary" onclick="selectSupplier(\''+s.id+'\')">Ver acerto e peças</button><button class="secondary" onclick="editSupplier(\''+s.id+'\')">Editar nome</button>'+(s.active?'<button class="secondary" onclick="deleteSupplier(\''+s.id+'\')">Excluir</button>':'<button class="secondary" onclick="toggleSupplierActive(\''+s.id+'\')">Reativar</button>')+'</div></div>';
+  }).join('');
+  const supplier=db.suppliers.find(row=>row.id===selectedSupplierId);
+  let detail='';
+  if(supplier){
+    const sold=db.sales.flatMap(sale=>sale.items.filter(item=>item.supplierId===supplier.id&&item.acquisitionType==='consignment').map(item=>({...item,saleDate:sale.closedAt||sale.createdAt}))).sort((a,b)=>new Date(b.saleDate)-new Date(a.saleDate));
+    const due=sold.reduce((sum,item)=>sum+Number(item.cost||0),0);
+    const payments=db.supplierPayments.filter(row=>row.supplier_id===supplier.id).sort((a,b)=>new Date(b.paid_at)-new Date(a.paid_at));
+    const paid=payments.reduce((sum,row)=>sum+Number(row.amount||0),0);
+    const pending=Math.max(0,due-paid);
+    const available=db.products.filter(p=>p.supplierId===supplier.id&&p.type==='consignment'&&p.status==='Disponível');
+    const returns=db.supplierProductReturns.filter(row=>row.supplier_id===supplier.id).sort((a,b)=>new Date(b.returned_at)-new Date(a.returned_at));
+    detail='<div class="card" style="margin-top:18px;border:1px solid var(--line)"><h3>Acerto — '+esc(supplier.name)+'</h3><div class="formgrid"><div class="statline"><span>Total a repassar</span><b>'+money(due)+'</b></div><div class="statline"><span>Já pago</span><b>'+money(paid)+'</b></div><div class="statline"><span>Saldo pendente</span><b>'+money(pending)+'</b></div></div><div class="row" style="margin:12px 0"><button onclick="registerSupplierPayment(\''+supplier.id+'\')" '+(pending<=0?'disabled':'')+'>Registrar pagamento</button><button class="secondary" onclick="selectedSupplierId=null;renderSuppliers()">Fechar ficha</button></div>';
+    detail+='<h4>Peças vendidas em consignação</h4>';
+    detail+=sold.length?sold.map(item=>'<div class="statline"><span><b>'+esc(item.description||'Peça')+'</b><br><small>Data da venda: '+dateBR(item.saleDate)+'</small></span><b>Repasse: '+money(item.cost)+'</b></div>').join(''):'<div class="empty">Nenhuma peça consignada vendida.</div>';
+    detail+='<h4 style="margin-top:22px">Peças disponíveis para devolução</h4>';
+    detail+=available.length?available.map(p=>'<div class="statline"><span><b>'+esc(p.desc||'Peça')+'</b></span><button class="secondary" onclick="registerSupplierProductReturn(\''+p.id+'\')">Registrar devolução</button></div>').join(''):'<div class="empty">Não há peças disponíveis desta fornecedora para devolver.</div>';
+    detail+='<h4 style="margin-top:22px">Histórico de pagamentos</h4>';
+    detail+=payments.length?payments.map(row=>'<div class="statline"><span><b>'+money(row.amount)+'</b><br><small>'+dateBR(row.paid_at)+' • '+esc(row.description||'Pagamento registrado')+'</small></span><span class="pill">Pago</span></div>').join(''):'<div class="empty">Nenhum pagamento registrado.</div>';
+    detail+='<h4 style="margin-top:22px">Histórico de devoluções</h4>';
+    detail+=returns.length?returns.map(row=>'<div class="statline"><span><b>'+esc(row.product_description||'Peça')+'</b><br><small>Devolvida em '+dateBR(row.returned_at)+(row.notes?' • '+esc(row.notes):'')+'</small></span><span class="pill">Devolvida</span></div>').join(''):'<div class="empty">Nenhuma devolução registrada.</div>';
+    detail+='</div>';
+  }
+  el('supplierList').innerHTML=(rows||'<div class="empty">Nenhuma fornecedora cadastrada.</div>')+detail;
+}
+function selectSupplier(id){selectedSupplierId=id;renderSuppliers();}
+async function registerSupplierProductReturn(productId){
+  const product=db.products.find(row=>row.id===productId);if(!product)return;
+  if(!confirm('Registrar a devolução de "'+product.desc+'" à fornecedora? A peça sairá do estoque disponível, mas seu cadastro e histórico serão preservados.'))return;
+  const now=new Date(),today=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+  const raw=prompt('Data da devolução (AAAA-MM-DD):',today);if(raw===null)return;
+  if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(raw)||Number.isNaN(new Date(raw+'T12:00:00').getTime()))return alert('Informe uma data válida no formato AAAA-MM-DD.');
+  const notes=prompt('Observação da devolução (opcional):','')||null;
+  const {error}=await sb.rpc('admin_return_supplier_product',{p_product_id:productId,p_returned_at:raw,p_notes:notes});
+  if(error)return reportError(error,'Não foi possível registrar a devolução.');
+  await loadCloud();selectedSupplierId=product.supplierId;renderSuppliers();alert('Devolução registrada. O cadastro do produto e o histórico de vendas foram preservados.');
 }
 
 async function registerSupplierPayment(supplierId){
