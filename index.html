@@ -478,6 +478,26 @@ async function selectLiveProduct(productId){
   if(el('liveSearchResults'))el('liveSearchResults').innerHTML='';
   await addToBag(product);
 }
+async function clearOpenBag(customerId){
+  const items=[...(db.bags[customerId]||[])];
+  if(!items.length)return alert('Esta sacolinha já está vazia.');
+  if(!confirm('Esvaziar a sacolinha desta cliente? Todas as peças não pagas serão removidas, voltarão ao estoque e os valores serão recalculados. Cobranças pendentes serão substituídas.'))return;
+  for(const item of items){
+    try{
+      const {data,error}=await sb.functions.invoke('admin-remove-bag-item',{body:{item_id:item.id}});
+      if(error)throw error;
+      if(data?.error)throw new Error(data.error);
+    }catch(err){
+      await loadCloud();
+      render();
+      return reportError(err,'A sacolinha foi parcialmente esvaziada. Confira as peças restantes e tente novamente.');
+    }
+  }
+  await loadCloud();
+  render();
+  alert('Sacolinha esvaziada. As peças removidas voltaram ao estoque e os valores foram recalculados.');
+}
+
 async function removeBagItem(customerId,itemId){
   const meta=db.bagMeta[customerId],items=db.bags[customerId]||[];
   if(meta?.firstPayment?.status==='paid'&&items[0]?.id===itemId)return alert('A primeira peça já foi paga e não pode ser removida por esta ação.');
@@ -673,7 +693,8 @@ function renderSelectors(){
 function renderCart(){
   const cid=el('liveClient').value;if(!cid){el('cart').innerHTML='<div class="empty">Selecione uma cliente para visualizar a sacolinha.</div>';return;}
   const items=db.bags[cid]||[],meta=db.bagMeta[cid];let subtotal=0;
-  const rows=items.map(item=>{subtotal+=Number(item.price||0);return `<div class="statline"><span>${esc(item.description)}<br><small>${esc(item.size)} • ${money(item.price)}</small></span><button class="danger" onclick="removeBagItem('${cid}','${item.id}')">Remover</button></div>`;}).join('');
+  const clearButton=items.length?'<button class="danger" style="margin:8px 0" onclick="clearOpenBag(\''+cid+'\')">Esvaziar sacolinha</button>':'';
+  const rows=clearButton+items.map(item=>{subtotal+=Number(item.price||0);return `<div class="statline"><span>${esc(item.description)}<br><small>${esc(item.size)} • ${money(item.price)}</small></span><button class="danger" onclick="removeBagItem('${cid}','${item.id}')">Remover</button></div>`;}).join('');
   const discount=Number(meta?.discount||0),total=Math.max(0,subtotal-discount),first=meta?.firstPayment;
   const paidCredit=first?.status==='paid'?Number(first.base_amount||0):0;
   const balance=Math.max(0,total-paidCredit-Number(meta?.balancePaid||0)),balancePayment=meta?.balancePayment;
