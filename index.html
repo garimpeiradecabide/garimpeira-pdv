@@ -1084,7 +1084,7 @@ function renderSales(){
     const customer=db.clients.find(c=>c.id===sale.customerId);
     const subtotal=sale.items.reduce((sum,item)=>sum+item.price,0);
     const total=Math.max(0,subtotal-sale.discount);
-    const payments=(db.payments||[]).filter(p=>p.bag_id===sale.id&&!p.superseded_at&&!['failed','cancelled'].includes(p.status)).sort((a,b)=>new Date(a.created_at||0)-new Date(b.created_at||0));
+    const payments=(db.payments||[]).filter(p=>p.bag_id===sale.id&&!['failed','cancelled'].includes(p.status)).sort((a,b)=>new Date(a.created_at||0)-new Date(b.created_at||0));
     const paymentLabels={paid:'Pago e aprovado',pending:'Pendente',failed:'Não aprovado',cancelled:'Cancelado',refunded:'Estornado'};
     const methodLabels={pix:'Pix',card:'Cartão',cash:'Dinheiro',manual:'Registro manual'};
     const paymentHtml=payments.map(p=>{
@@ -1104,7 +1104,7 @@ async function deleteCompletedSale(bagId){
   if(!sale)return alert('Não encontrei esta venda concluída. Atualize o painel.');
   const customer=db.clients.find(row=>row.id===sale.customerId);
   const names=sale.items.map(item=>item.description).join(', ');
-  const confirmation='ATENÇÃO — CONFIRME A DEVOLUÇÃO\n\nA venda de '+(customer?.name||'cliente')+' será excluída definitivamente.\n\nPeças: '+names+'\n\nAs peças voltarão para o estoque. A venda será retirada do faturamento e dos relatórios de lucro, e as peças deixarão de constar como vendidas/reservadas no controle da fornecedora, recalculando o valor devido. Os pagamentos serão removidos do histórico desta sacolinha; pagamentos já registrados à fornecedora permanecem no histórico.\n\nSe a cliente já pagou, confirme que você JÁ DEVOLVEU o dinheiro por fora (Pix, banco ou cartão). O PDV não faz o estorno financeiro.\n\nDeseja continuar?';
+  const confirmation='ATENÇÃO — CONFIRME A DEVOLUÇÃO\n\nA venda de '+(customer?.name||'cliente')+' será excluída definitivamente.\n\nPeças: '+names+'\n\nAs peças voltarão para o estoque. A venda será retirada do faturamento e dos relatórios de lucro, e as peças deixarão de constar como vendidas/reservadas no controle da fornecedora, recalculando o valor devido. Os pagamentos recebidos NÃO serão apagados: permanecerão no histórico financeiro identificados como pagamentos de venda cancelada/link antigo pago, e deixarão de ser crédito para novas compras desta sacolinha.\n\nSe a cliente já pagou, confirme que você JÁ DEVOLVEU o dinheiro por fora (Pix, banco ou cartão). O PDV não faz o estorno financeiro.\n\nDeseja continuar?';
   if(!confirm(confirmation))return;
   const {data,error}=await sb.rpc('admin_delete_completed_sale',{p_bag_id:bagId});
   if(error)return reportError(error,'Não foi possível excluir esta venda. Confira se ela ainda está concluída e tente novamente.');
