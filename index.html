@@ -237,7 +237,7 @@ async function loadCloud(){
     const lateSupersededPayments=supersededPayments.filter(x=>x.status==='paid');
     const balancePaid=balancePayments.reduce((sum,x)=>sum+Number(x.base_amount||0),0);
     const balancePayment=db.payments.find(x=>x.bag_id===bag.id&&x.purpose==='bag_balance'&&x.status==='pending'&&!x.superseded_at)||null;
-    db.bagMeta[bag.customer_id]={id:bag.id,discount:Number(bag.discount_amount||0),reason:bag.discount_reason||'',firstPaymentCombinedAt:bag.first_payment_combined_at||null,firstPaymentCombinedBy:bag.first_payment_combined_by||null,firstPayment,balancePayment,balancePayments,balancePaid,supersededPayments,lateSupersededPayments};
+    db.bagMeta[bag.customer_id]={id:bag.id,discount:Number(bag.discount_amount||0),reason:bag.discount_reason||'',firstPaymentCombinedAt:bag.first_payment_combined_at||null,firstPaymentCombinedBy:bag.first_payment_combined_by||null,firstPaymentCombinedScope:bag.first_payment_combined_scope||null,firstPayment,balancePayment,balancePayments,balancePaid,supersededPayments,lateSupersededPayments};
   }
   for(const req of cr.data) db.closeRequests[req.bag_id]=req;
   for(const item of bi.data){
@@ -851,10 +851,10 @@ function renderCart(){
     }else{
       firstPanel='<div class="note"><b>Sacolinha reservada para testes.</b><br>Não gere cobranças de produção para esta cliente.</div>';
     }
-  }else if(meta?.firstPaymentCombinedAt&&first?.status!=='paid'){
+  }else if(meta?.firstPaymentCombinedAt&&meta?.firstPaymentCombinedScope===currentPaymentCombinedScope()&&first?.status!=='paid'){
     firstPanel='<div class="note"><b>Pagamento combinado autorizado pela Garimpeira.</b><br>A cliente está liberada para continuar comprando. O combinado não representa pagamento recebido.</div>';
     if(balance>0)firstPanel+='<div class="note"><b>Valor ainda a receber: '+money(balance)+'</b><br>Depois de conferir o Pix ou outro pagamento fora do sistema, registre o recebimento para finalizar a sacolinha.<br><button onclick="registerExternalBagPayment(\''+cid+'\')">Pagamento concluído externamente e finalizar</button> <button class="secondary" onclick="sendLiveBagInvoice(\''+cid+'\')">Enviar comanda da live</button></div>';
-  }else if(items.length===1&&!first){
+  }else if(first?.status!=='paid'&&meta?.firstPaymentCombinedScope!==currentPaymentCombinedScope()){
     firstPanel=`<div class="note"><b>Primeira peça: pagamento obrigatório.</b><br>A cliente recebe a orientação automática e deve pagar esta peça para continuar comprando. Se você combinar o pagamento para depois, autorize abaixo.<div class="formgrid"><div class="field"><label for="firstPayMethod">Forma de pagamento</label><select id="firstPayMethod"><option value="pix">Pix</option><option value="card">Cartão de crédito</option></select></div></div><button onclick="createFirstItemCheckout('${cid}')">Gerar link da primeira peça e abrir WhatsApp</button> <button class="secondary" onclick="setFirstPaymentCombined('${cid}')">Autorizar pagamento combinado</button></div>`;
   }else if(first?.status==='pending'){
     firstPanel=`<div class="note"><b>Link da primeira peça pendente.</b><br>A cliente ainda não pagou. Você pode reenviar o link ou, se preferir permitir que ela continue comprando e pague depois, conceda pagamento combinado. Essa autorização não registra recebimento e invalida o link pendente no controle do sistema.<br><button class="secondary" onclick="sendFirstPaymentWhatsApp('${cid}')">Abrir WhatsApp com o link novamente</button><br><br><button onclick="setFirstPaymentCombined('${cid}')">Conceder continuação da compra — pagamento combinado</button><br><br><button class="secondary" onclick="registerExternalBagPayment('${cid}')">Pagamento recebido por fora — registrar e finalizar</button></div>`;
@@ -967,6 +967,7 @@ async function setBagDiscount(customerId){
   if(error)return reportError(error,'Não foi possível registrar o desconto.');
   await loadCloud();alert('Desconto administrativo registrado: '+money(amount)+'.');
 }
+function currentPaymentCombinedScope(){const active=db.liveSessions.find(row=>row.status==='open'&&!row.ended_at);if(active)return 'live:'+active.id;const now=new Date();return 'day:'+now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');}
 async function setFirstPaymentCombined(customerId){
  const meta=db.bagMeta[customerId],items=db.bags[customerId]||[];
  if(!meta?.id||!items.length)return alert('Adicione a primeira peça antes de autorizar pagamento combinado.');
