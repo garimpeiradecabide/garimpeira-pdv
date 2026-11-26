@@ -154,7 +154,11 @@ async function loadCustomerData(customer){
     const subtotal=list.reduce((s,i)=>s+Number(i.price_snapshot||0),0),discount=Number(bag.discount_amount||0),total=Math.max(0,subtotal-discount);
     const firstPayment=payments.find(p=>p.bag_id===bag.id&&p.purpose==='first_item'&&!p.superseded_at);
     const paidFirst=firstPayment?.status==='paid';
-    const firstPaymentCombined=!!bag.first_payment_combined_at&&!paidFirst;
+    const activeLiveResult=await sb.from('live_sessions').select('id').eq('status','open').is('ended_at',null).order('started_at',{ascending:false}).limit(1);
+    if(activeLiveResult.error){$('currentBag').textContent=activeLiveResult.error.message;return}
+    const activeLive=activeLiveResult.data?.[0]||null;
+    const currentScope=activeLive?'live:'+activeLive.id:'day:'+new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+    const firstPaymentCombined=!!bag.first_payment_combined_at&&!paidFirst&&bag.first_payment_combined_scope===currentScope;
     const firstCredit=paidFirst?Number(firstPayment.base_amount||0):0;
     const balancePayments=payments.filter(p=>p.bag_id===bag.id&&p.purpose==='bag_balance'&&p.status==='paid'&&!p.superseded_at);
     const balancePaid=balancePayments.reduce((sum,p)=>sum+Number(p.base_amount||0),0);
