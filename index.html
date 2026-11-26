@@ -144,7 +144,7 @@ table{width:100%;border-collapse:collapse;margin-top:12px;background:white}th,td
 'use strict';
 const SUPABASE_URL = 'https://gcyuvbakxswkjcyqscth.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_haoKT8vSzAEpxwfsapBM1A_4REUsg8T';
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {auth:{storageKey:'garimpeira-pdv-admin-auth',persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
 let db = {clients:[], suppliers:[], products:[], supplierLots:[], supplierLotReturns:[], bags:{}, bagMeta:{}, closeRequests:{}, paymentSettings:null, payments:[], sales:[], deliveries:[], liveSessions:[], supplierPayments:[], supplierProductReturns:[], legacyEvents:[]};
 let currentUser = null;
 // Senhas provisórias ficam apenas na memória desta tela administrativa; nunca são gravadas no banco.
@@ -175,6 +175,8 @@ function activatePhysicalScanner(){
 async function login(email,password){
   const {data,error}=await sb.auth.signInWithPassword({email,password});
   if(error) throw error;
+  const {data:staffData,error:staffError}=await sb.rpc('is_staff');
+  if(staffError||staffData!==true){await sb.auth.signOut();throw new Error('Este acesso não tem permissão administrativa. Entre com o e-mail e a senha do administrador.');}
   currentUser=data.user;
   await loadCloud();
   el('loginScreen').style.display='none';el('app').style.display='block';el('logoutBtn').style.display='inline-block';
@@ -508,7 +510,10 @@ async function selectLiveProduct(productId){
 async function clearOpenBag(customerId){
   const items=[...(db.bags[customerId]||[])];
   if(!items.length)return alert('Esta sacolinha já está vazia.');
-  if(!confirm('Esvaziar a sacolinha desta cliente? Todas as peças não pagas serão removidas, voltarão ao estoque e os valores serão recalculados. Cobranças pendentes serão substituídas.'))return;
+  const hasPaid=(db.payments||[]).some(p=>p.bag_id===db.bagMeta[customerId]?.id&&['first_item','bag_balance'].includes(p.purpose)&&p.status==='paid'&&!p.superseded_at);
+  const hasPending=(db.payments||[]).some(p=>p.bag_id===db.bagMeta[customerId]?.id&&['first_item','bag_balance'].includes(p.purpose)&&p.status==='pending'&&!p.superseded_at);
+  const warning=hasPaid?' Pagamentos já confirmados permanecerão no histórico, mas deixarão de ser crédito desta sacolinha. O PDV não faz estorno; confira e devolva o valor à cliente por fora.':'';
+  if(!confirm('Esvaziar a sacolinha desta cliente? Todas as peças serão removidas e voltarão ao estoque. Cobranças pendentes serão substituídas.'+(hasPending?' Os links antigos deixarão de valer para esta sacolinha.':'')+warning))return;
   for(const item of items){
     try{
       const {data,error}=await sb.functions.invoke('admin-remove-bag-item',{body:{item_id:item.id}});
@@ -527,9 +532,10 @@ async function clearOpenBag(customerId){
 
 async function removeBagItem(customerId,itemId){
   const meta=db.bagMeta[customerId],items=db.bags[customerId]||[];
-  if(meta?.firstPayment?.status==='paid'&&items[0]?.id===itemId)return alert('A primeira peça já foi paga e não pode ser removida por esta ação.');
   const hasPendingCheckout=meta?.firstPayment?.status==='pending'||meta?.balancePayment?.status==='pending';
-  if(!confirm('Remover esta peça da sacolinha e devolver ao estoque? O saldo será recalculado. '+(hasPendingCheckout?'A cobrança pendente será substituída. O checkout antigo será expirado quando o Mercado Pago permitir.':'')))return;
+  const hasPaid=(db.payments||[]).some(p=>p.bag_id===meta?.id&&['first_item','bag_balance'].includes(p.purpose)&&p.status==='paid'&&!p.superseded_at);
+  const paidWarning=hasPaid?' Pagamentos já confirmados continuarão registrados no histórico, mas não serão abatidos da nova composição da sacolinha. O PDV não faz estorno; confira e devolva o valor à cliente por fora.':'';
+  if(!confirm('Remover esta peça da sacolinha e devolver ao estoque? Os valores serão recalculados. '+(hasPendingCheckout?'A cobrança pendente será substituída. O checkout antigo será expirado quando o Mercado Pago permitir.':'')+paidWarning))return;
   try{
     const {data,error}=await sb.functions.invoke('admin-remove-bag-item',{body:{item_id:itemId}});
     if(error)throw error;
@@ -1125,8 +1131,12 @@ async function init(){
   const dateField=el('lotDate');
   if(dateField){const d=new Date();dateField.value=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
   const {data:{session}}=await sb.auth.getSession();
-  if(session){currentUser=session.user;try{await loadCloud();el('loginScreen').style.display='none';el('app').style.display='block';el('logoutBtn').style.display='inline-block';setStatus('Conectado ao Supabase',true);}catch(err){setStatus('Falha ao carregar dados');reportError(err,'A sessão existe, mas não consegui carregar o banco.');}}
-  else setStatus('Aguardando login');
+  if(session){
+    const {data:staffData,error:staffError}=await sb.rpc('is_staff');
+    if(staffError||staffData!==true){await sb.auth.signOut();setStatus('Aguardando login administrativo');el('loginMessage').textContent='A sessão anterior não é administrativa. Entre com o e-mail e a senha do administrador.';return;}
+    currentUser=session.user;
+    try{await loadCloud();el('loginScreen').style.display='none';el('app').style.display='block';el('logoutBtn').style.display='inline-block';setStatus('Conectado ao Supabase',true);}catch(err){setStatus('Falha ao carregar dados');reportError(err,'A sessão existe, mas não consegui carregar o banco.');}
+  } else setStatus('Aguardando login');
 }
 sb.auth.onAuthStateChange((event,session)=>{if(event==='SIGNED_OUT'){el('app').style.display='none';el('loginScreen').style.display='block';el('logoutBtn').style.display='none';}});
 init();
