@@ -938,7 +938,7 @@ function sendFirstItemPixCharge(customerId){
   if(!customer?.phone)return alert('Cadastre o telefone/WhatsApp da cliente antes de enviar a cobrança.');
   if(!items.length)return alert('Não encontrei a primeira peça reservada nesta sacolinha.');
   const firstName=customerFirstName(customer);
-  const message='Oi'+(firstName?', '+firstName:'')+'! 🤍\\n\\nPara continuar comprando em nossas lives, você precisa fazer o pagamento da sua primeira peça.\\n\\n*Pix celular:* 11 91612-0633\\n*Banco:* PicPay\\n*Beneficiário:* Gabriela\\n\\nApós isso, volte à live e avise que foi feito o pagamento da primeira peça. 💚';
+  const message='Oi'+(firstName?', '+firstName:'')+'! 🤍\n\nPara continuar comprando em nossas lives, você precisa fazer o pagamento da sua primeira peça.\n\n*Pix celular:* 11 91612-0633\n*Banco:* PicPay\n*Beneficiário:* Gabriela\n\nApós isso, volte à live e avise que foi feito o pagamento da primeira peça. 💚';
   openWhatsAppMessage(customer.phone,message);
 }
 function openTestCheckout(customerId){
